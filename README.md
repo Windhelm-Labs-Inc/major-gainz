@@ -12,6 +12,7 @@ You need to populate this file with your own OpenAI key and OpenWallet project.
 Both take less than two minutes to sign up for, OpenAI is 10 dollar minimum (set a spend limit), and walletconnect is free.
 
 https://openai.com/api/ 
+ 
 https://cloud.walletconnect.com/sign-up  
 
 
