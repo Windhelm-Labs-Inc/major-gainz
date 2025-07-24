@@ -43,3 +43,5 @@ This will start:
 - **Frontend**: React/TypeScript with Vite
 - **AI Integration**: OpenAI GPT with Langchain for portfolio analysis
 - **Blockchain**: Hedera Network via SDK and agent toolkit 
+
+.
