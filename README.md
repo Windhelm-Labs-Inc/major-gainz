@@ -1,20 +1,19 @@
-# Quick Origins
+# Quick Origins POC
 
-AI-Powered Portfolio Intelligence for Hedera Network
+###
+This is just a very quick attempt at getting some starting resources together to try a few things for the hackathon. Think of it as a playground, not a source of truth. Everything in here is subject to being broken at anytime. 
 
-## Setup
+## Setup -- do not skip.
 
-### Prerequisites
+You need to populate this file with your own OpenAI key and OpenWallet project.
 
-1. **OpenAI API Key**: Set your OpenAI API key as an environment variable:
-   ```bash
-   export OPENAI_API_KEY="your-openai-api-key-here"
-   ```
+`services/frontend/appSettings.json`
 
-2. **WalletConnect Project ID**: Set your WalletConnect project ID as an environment variable:
-   ```bash
-   export WALLETCONNECT_PROJECT_ID="your-walletconnect-project-id-here"
-   ```
+Both take less than two minutes to sign up for, OpenAI is 10 dollar minimum (set a spend limit), and walletconnect is free.
+
+https://openai.com/api/ 
+https://cloud.walletconnect.com/sign-up  
+
 
 ### Running the Project
 
@@ -32,10 +31,10 @@ This will start:
 ## Features
 
 - 🔗 **Hedera Network Integration**: Connect MetaMask and HashPack wallets
-- 📊 **Portfolio Analysis**: Real-time portfolio tracking and valuation
-- 🤖 **AI Assistant**: GPT-powered financial analysis and insights
+- 📊 **Portfolio Analysis**: Quick and dirty portfolio tracking and valuations, with prices from CoinGecko API
+- 🤖 **AI Assistant**: Humble OpenAI GPT-powered insights
 - 📈 **Returns Analytics**: Historical performance and risk metrics
-- 🎨 **Modern UI**: Clean, professional interface optimized for demos
+- 🎨 **Charts & Simple UI**: Nothing too fancy.
 
 ## Architecture
 
