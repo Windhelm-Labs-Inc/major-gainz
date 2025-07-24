@@ -35,7 +35,7 @@ async def update_token_data(db: Session, token: str, api_id: str):
             return
         logger.error(f"HTTP {exc.response.status_code} error fetching OHLC data for {token} (api_id: {api_id}): {exc}")
         raise
-    # No ValueError handling; always insert whatever data was returned
+    
 
     if isinstance(data, list):
         rows = process_ohlc_list(data)
@@ -106,7 +106,7 @@ def get_stats(db: Session, token: str, start: Optional[date] = None, end: Option
     }
 
 
-# ---------------- Return calculations -----------------
+
 
 
 def _get_closes(db: Session, token: str, days: int) -> List[float]:
@@ -118,12 +118,12 @@ def _get_closes(db: Session, token: str, days: int) -> List[float]:
         .all()
     )
     closes = [r[0] for r in rows]
-    closes.reverse()  # chronological order
+    closes.reverse()  # TODO We should probably get the dates in here.
     return closes
 
 
 def mean_daily_return(db: Session, token: str, days: int = 30) -> float:
-    closes = _get_closes(db, token, days + 1)  # need one extra for diff
+    closes = _get_closes(db, token, days + 1)  # This might have introduced a bug, return to later. #TODO
     if len(closes) < 2:
         raise ValueError("Not enough data to compute returns")
     returns = np.diff(closes) / closes[:-1]
