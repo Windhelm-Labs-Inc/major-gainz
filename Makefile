@@ -42,12 +42,24 @@ backend-tests:
 
 .PHONY: backend-tests 
 
-# -----------------------------------------------------------
+
 # Rebuild backend database from scratch (drops sqlite file and
 # repopulates via refresh_all_tokens).
-# -----------------------------------------------------------
-
 backend-rebuild-db:
 	cd services/backend && poetry run python -m scripts.rebuild_db
 
 .PHONY: backend-rebuild-db 
+
+# Build and run using Docker script (with volume mounts)
+docker-dev:
+	./docker-build-and-run.sh
+
+
+.PHONY: docker-dev 
+
+# Run using Docker Compose
+docker-compose-dev:
+	./docker-build-and-run.sh
+	docker-compose up
+
+.PHONY: docker-compose-dev
