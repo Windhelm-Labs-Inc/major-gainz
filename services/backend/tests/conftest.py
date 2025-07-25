@@ -4,10 +4,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.database import SessionLocal, get_db
 
-
-# ---------------------------------------------------------------------------
 # Use the production SQLite database (`ohlcv.db`) for all backend tests.
-# ---------------------------------------------------------------------------
 
 
 def override_get_db():
