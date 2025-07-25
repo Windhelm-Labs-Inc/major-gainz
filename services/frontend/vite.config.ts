@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    host: '0.0.0.0', // Bind to all interfaces for Docker
     open: true,
     proxy: {
       '/ohlcv': 'http://localhost:8000',

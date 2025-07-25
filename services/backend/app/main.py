@@ -14,8 +14,10 @@ app = FastAPI(title="Hedera Token OHLCV API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # Frontend development server
-        "http://127.0.0.1:3000",  # Alternative localhost format
+        "http://localhost:3000",     # Local development
+        "http://127.0.0.1:3000",    
+        "http://0.0.0.0:3000",      
+        "http://host.docker.internal:3000",  # Docker Bindings
     ],
     allow_credentials=True,
     allow_methods=["*"],
