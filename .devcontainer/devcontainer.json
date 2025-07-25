@@ -1,0 +1,60 @@
+{
+  "name": "Quick Origins POC",
+  "build": {
+    "dockerfile": "../Dockerfile"
+  },
+  "workspaceFolder": "/app",
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Frontend (React)",
+      "onAutoForward": "notify"
+    },
+    "8000": {
+      "label": "Backend (FastAPI)",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "ms-python.flake8",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-typescript-next",
+        "ms-vscode.vscode-json",
+        "ms-toolsai.jupyter",
+        "ms-python.debugpy",
+        "formulahendry.auto-rename-tag",
+        "christian-kohler.path-intellisense",
+        "ms-vscode.makefile-tools"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.formatting.provider": "black",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "python.linting.flake8Enabled": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": true
+        },
+        "typescript.preferences.importModuleSpecifier": "relative",
+        "javascript.preferences.importModuleSpecifier": "relative"
+      }
+    }
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/services/frontend/appSettings.json,target=/app/services/frontend/appSettings.json,type=bind",
+    "source=${localWorkspaceFolder}/services/backend/logs,target=/app/services/backend/logs,type=bind"
+  ],
+  "postCreateCommand": "pip install black isort flake8 pylint mypy pytest-cov ipython jupyter && npm install -g typescript eslint prettier && make frontend-install",
+  "remoteUser": "root",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  }
+} 
