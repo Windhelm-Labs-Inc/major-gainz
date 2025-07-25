@@ -1,0 +1,40 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: FastAPI Backend",
+      "type": "python",
+      "request": "launch",
+      "program": "/usr/local/bin/uvicorn",
+      "args": [
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8000",
+        "--host",
+        "0.0.0.0"
+      ],
+      "cwd": "${workspaceFolder}/services/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Current File",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Pytest",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-v"],
+      "cwd": "${workspaceFolder}/services/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+} 

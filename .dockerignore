@@ -1,0 +1,47 @@
+# Version control
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Documentation
+README.md
+*.md
+
+# Environment and IDE files
+.env
+.env.local
+.env.production
+.vscode
+.idea
+*.swp
+*.swo
+
+# Backend Python files
+services/backend/__pycache__
+services/backend/**/__pycache__
+services/backend/.pytest_cache
+services/backend/logs/*.log
+services/backend/dist
+services/backend/build
+services/backend/.coverage
+services/backend/htmlcov
+
+# Frontend Node.js files
+services/frontend/node_modules
+services/frontend/dist
+services/frontend/build
+services/frontend/.npm
+services/frontend/.cache
+services/frontend/appSettings.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
