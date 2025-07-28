@@ -16,6 +16,18 @@ https://openai.com/api/
 https://cloud.walletconnect.com/sign-up  
 
 
+### Added Docker Support
+
+There are now buld and run helper scripts that should work with each platform, if you get stuck and are on windows, use WSL for linux tooling.
+
+`docker-build-and-run.bat`
+`docker-build-and-run.ps1`
+`docker-build-and-run.sh`
+
+There is also make docker-dev
+
+And a dev container (kind of works, may need some attention)
+
 ### Running the Project
 
 Build and run all services:
