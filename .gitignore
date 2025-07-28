@@ -25,6 +25,8 @@ share/python-wheels/
 *.manifest
 *.spec
 
+**/temp_data/*.csv
+
 pip-log.txt
 pip-delete-this-directory.txt
 
@@ -197,7 +199,7 @@ Thumbs.db
 .cursor/
 .cursorignore
 
-*.db
+
 *.sqlite
 *.sqlite3
 
@@ -227,4 +229,4 @@ test-results/
 playwright-report/
 test-results.xml 
 
-**/*.db
+**/ohlcv.db
