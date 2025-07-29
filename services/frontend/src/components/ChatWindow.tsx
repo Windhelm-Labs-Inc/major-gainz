@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Portfolio } from '../types/portfolio'
@@ -14,6 +14,7 @@ interface ChatWindowProps {
   selectedAddress: string
   hederaNetwork: 'mainnet' | 'testnet'
   portfolio?: Portfolio
+  scratchpadContext?: string
 }
 
 interface ReturnsStats {
@@ -24,7 +25,7 @@ interface ReturnsStats {
   dailyReturns: number[] // 14 days of daily simple returns
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork, portfolio }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork, portfolio, scratchpadContext }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -41,23 +42,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
   // Store returns statistics
   const [returnsStats, setReturnsStats] = useState<ReturnsStats[]>([])
 
-  // Reset agent when address changes to ensure prompt is up to date
+  // Track the last scratchpad content that was sent to the agent
+  const lastSentScratchpad = useRef<string>('')
+
+  // Only reset agent when address or portfolio changes (not for scratchpad updates)
   React.useEffect(() => {
-    console.log('[ChatWindow] selectedAddress changed', selectedAddress)
+    console.log('[ChatWindow] selectedAddress or portfolio changed', selectedAddress)
     setAgentExecutor(null)
     
     // Fetch returns statistics when portfolio changes
     if (portfolio && portfolio.holdings.length > 0) {
-      fetchReturnsStats(portfolio)
+      console.log('[ChatWindow] Fetching returns statistics...')
+      fetchReturnsStats()
     }
-  }, [selectedAddress, portfolio])
+  }, [selectedAddress, portfolio?.holdings.length])
 
-  const fetchReturnsStats = async (portfolio: Portfolio) => {
+  const fetchReturnsStats = async () => {
     console.log('[ChatWindow] Fetching returns statistics...')
     const stats: ReturnsStats[] = []
     
     // Get unique symbols from portfolio
-    const symbols = [...new Set(portfolio.holdings.map(h => h.symbol))]
+    const symbols = [...new Set(portfolio?.holdings.map(h => h.symbol) || [])]
     
     for (const symbol of symbols) {
       try {
@@ -109,7 +114,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
 
     const openAIApiKey = settings.OPENAI_API_KEY
 
-
     // @ts-ignore
     if (typeof window !== 'undefined') {
       // @ts-ignore
@@ -122,7 +126,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
       model: 'gpt-4o',
       openAIApiKey
     })
-
 
     const client = hederaNetwork === 'mainnet'
       ? Client.forMainnet().setLedgerId(LedgerId.MAINNET)
@@ -164,6 +167,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
     console.log('[ChatWindow] Portfolio summary in prompt:', portfolioSummary)
     console.log('[ChatWindow] Returns statistics summary:', returnsStatsSummary)
 
+    // Create a stable system prompt without scratchpad context
     const prompt = ChatPromptTemplate.fromMessages([
       [
         'system',
@@ -173,7 +177,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
         `\n\nReturns Statistics (30-day averages):\n${returnsStatsSummary}`+
         `\n\nIMPORTANT: Daily returns data provided via get_returns_stats tool contains LOG RETURNS (natural logarithm), not simple returns. `+
         `Each token has 14 days of daily log returns available for detailed analysis.`+
-        `\n\nUse this portfolio and returns data to provide informed financial analysis and recommendations.`
+        `\n\nUse this portfolio and returns data to provide informed financial analysis and recommendations. The user may provide additional context about selected tokens or holder analysis in their messages.`
       ],
       ['placeholder', '{chat_history}'],
       ['human', '{input}'],
@@ -219,20 +223,41 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
   const handleSendMessage = async () => {
     if (inputValue.trim() === '') return
 
+    // Check if scratchpad has changed since the last message
+    const currentScratchpad = scratchpadContext || 'No active context'
+    const scratchpadChanged = currentScratchpad !== lastSentScratchpad.current
+    
+    // Prepare the message with scratchpad context only if it has changed
+    let messageToSend = inputValue.trim()
+    if (scratchpadChanged && currentScratchpad !== 'No active context') {
+      messageToSend = `${messageToSend}\n\n[Updated Context: ${currentScratchpad}]`
+      console.log('[ChatWindow] Scratchpad changed, including in message:', currentScratchpad)
+      // Update the last sent scratchpad reference
+      lastSentScratchpad.current = currentScratchpad
+    } else if (scratchpadChanged) {
+      console.log('[ChatWindow] Scratchpad cleared since last message')
+      lastSentScratchpad.current = currentScratchpad
+    } else {
+      console.log('[ChatWindow] Scratchpad unchanged, not including in message')
+    }
+
     const userMessage: Message = {
       id: messages.length + 1,
-      text: inputValue,
+      text: inputValue, // Show original user input in UI
       sender: 'user',
       timestamp: new Date()
     }
 
     console.log('[ChatWindow] User message', userMessage)
+    if (scratchpadChanged && currentScratchpad !== 'No active context') {
+      console.log('[ChatWindow] Message with updated context sent to agent:', messageToSend)
+    }
     setMessages(prev => [...prev, userMessage])
     setInputValue('')
 
     try {
       const executor = await initAgent()
-      const response = await executor.invoke({ input: inputValue })
+      const response = await executor.invoke({ input: messageToSend })
       console.log('[ChatWindow] Agent response', response)
 
       const systemMessage: Message = {
