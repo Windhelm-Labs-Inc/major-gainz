@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import type { Holding } from '../types/portfolio'
+import type { TokenAnalysisData } from '../hooks/useScratchpad'
 
 interface Props {
   selectedToken: Holding | null
   userAddress: string
   onClose: () => void
+  onAnalysisUpdate?: (analysisData: TokenAnalysisData) => void
 }
 
 interface TokenHolderData {
@@ -21,7 +23,7 @@ interface TokenHolderData {
   }>
 }
 
-const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onClose }) => {
+const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onClose, onAnalysisUpdate }) => {
   const [holderData, setHolderData] = useState<TokenHolderData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,6 +33,19 @@ const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onCl
       fetchHolderData()
     }
   }, [selectedToken, userAddress])
+
+  // Notify parent when holder data is loaded
+  useEffect(() => {
+    if (holderData && selectedToken && onAnalysisUpdate) {
+      const analysisData: TokenAnalysisData = {
+        percentile_rank: holderData.percentile_rank,
+        rank_label: getRankLabel(holderData.percentile_rank),
+        top_holder_balance: holderData.top_10_holders[0]?.balance || 0,
+        last_updated: holderData.last_updated_at
+      }
+      onAnalysisUpdate(analysisData)
+    }
+  }, [holderData, selectedToken]) // Removed onAnalysisUpdate from dependencies
 
   const fetchHolderData = async () => {
     if (!selectedToken || !userAddress) return
@@ -137,7 +152,7 @@ const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onCl
     }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>
+        <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#f3f4f6' }}>
           Holder Analysis
         </h2>
         <button 
