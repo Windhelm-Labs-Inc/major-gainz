@@ -35,7 +35,7 @@ src/
 │   └── __init__.py
 └── utils/                    # Utility functions
     ├── csv_export.py        # CSV export with file hashing
-    ├── query_helpers.py     # Database query helpers
+    ├── database_utils.py    # Database query helpers
     └── __init__.py
 ```
 
