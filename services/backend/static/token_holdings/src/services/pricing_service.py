@@ -4,7 +4,7 @@ import requests
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, List
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta
 import logging
 
@@ -100,24 +100,71 @@ class SaucerSwapPricingService(PricingServiceInterface):
                 logger.error("Failed to fetch tokens data from SaucerSwap")
                 return False
             
+            # Validate response format
+            if not isinstance(tokens_data, list):
+                logger.error(f"Unexpected response format from SaucerSwap: expected list, got {type(tokens_data)}")
+                return False
+            
             # Update cache
             self._price_cache = {}
+            successful_updates = 0
+            
             for token in tokens_data:
-                token_id = token.get("id", "").strip()
-                if token_id:
+                try:
+                    if not isinstance(token, dict):
+                        logger.warning(f"Skipping invalid token data: {token}")
+                        continue
+                    
+                    token_id = token.get("id", "").strip()
+                    if not token_id:
+                        logger.warning("Skipping token with missing ID")
+                        continue
+                    
+                    # Validate price data
+                    price_usd_str = token.get("priceUsd", "0")
+                    try:
+                        price_usd = Decimal(str(price_usd_str))
+                        if price_usd < 0:
+                            logger.warning(f"Negative price for token {token_id}: {price_usd}")
+                            price_usd = Decimal("0")
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid price data for token {token_id}: {price_usd_str} - {e}")
+                        price_usd = Decimal("0")
+                    
+                    # Validate decimals
+                    decimals = token.get("decimals", 0)
+                    try:
+                        decimals = int(decimals)
+                        if decimals < 0 or decimals > 50:  # Reasonable bounds
+                            logger.warning(f"Unusual decimals value for token {token_id}: {decimals}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Invalid decimals for token {token_id}: {e}")
+                        decimals = 0
+                    
                     self._price_cache[token_id] = {
                         "symbol": token.get("symbol", ""),
-                        "decimals": token.get("decimals", 0),
-                        "price_usd": Decimal(str(token.get("priceUsd", 0))),
+                        "decimals": decimals,
+                        "price_usd": price_usd,
                         "updated_at": datetime.utcnow()
                     }
+                    successful_updates += 1
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing token data {token}: {e}")
+                    continue
             
             self._last_cache_update = datetime.utcnow()
-            logger.info(f"Price cache updated with {len(self._price_cache)} tokens")
-            return True
+            logger.info(f"Price cache updated with {successful_updates}/{len(tokens_data)} tokens")
+            return successful_updates > 0
             
+        except (requests.RequestException, ConnectionError, TimeoutError) as e:
+            logger.error(f"Network error refreshing price cache: {e}")
+            return False
+        except (ValueError, TypeError) as e:
+            logger.error(f"Data validation error refreshing price cache: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error refreshing price cache: {e}")
+            logger.error(f"Unexpected error refreshing price cache: {e}")
             return False
     
     def get_token_price_usd(self, token_id: str) -> Optional[Decimal]:
