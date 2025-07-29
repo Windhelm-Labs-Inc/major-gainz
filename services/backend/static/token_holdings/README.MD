@@ -22,7 +22,8 @@ make test
 - `make refresh` - Refresh all token data
 - `make refresh-interactive` - Interactive mode (prompts for old data)
 - `make status` - Check token status
-- `make test` - Run system test
+- `make test` - Run pytest tests
+- `make system-test` - Run system integration test
 
 ## Poetry Commands
 
@@ -53,6 +54,25 @@ Interactive mode will:
 - 📋 Collect your choices and confirm before proceeding
 - 🚀 Batch update all selected tokens
 - 📈 Provide comprehensive summary
+
+## USD Filtering & Pricing
+
+The system integrates with [SaucerSwap API](https://docs.saucerswap.finance/v/developer/rest-api/) to provide USD-based filtering:
+
+```bash
+# Filter holders with minimum $10 USD value
+poetry run python -m src.cli refresh --token SAUCE --min-usd 10
+
+# Disable USD features entirely
+poetry run python -m src.cli refresh --disable-usd
+```
+
+**Features:**
+- 💰 **Real-time Pricing**: Fetches current USD prices from SaucerSwap
+- 🔍 **USD Filtering**: Filter holders by USD value of their holdings
+- 📊 **Price Storage**: Stores historical price data for analysis
+- ⚡ **Smart Caching**: 5-minute price cache to minimize API calls
+- 🛡️ **Rate Limiting**: Respects SaucerSwap API rate limits
 
 ## Development
 

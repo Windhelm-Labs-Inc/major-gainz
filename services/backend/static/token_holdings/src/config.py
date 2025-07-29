@@ -3,11 +3,12 @@
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Base paths
 PROJECT_ROOT = Path(__file__).parent.parent
 TOKENS_CONFIG_PATH = PROJECT_ROOT / "../../tokens_enabled.json"
+APP_SETTINGS_PATH = PROJECT_ROOT / "../../../frontend/appSettings.json"
 TEMP_DATA_DIR = PROJECT_ROOT / "temp_data"
 
 # API Configuration
@@ -40,6 +41,28 @@ def load_tokens_config() -> Dict[str, str]:
     except json.JSONDecodeError as e:
         print(f"Error parsing tokens config: {e}")
         return {}
+
+def load_app_settings() -> Dict[str, str]:
+    """Load application settings including API keys."""
+    try:
+        with open(APP_SETTINGS_PATH, 'r') as f:
+            settings = json.load(f)
+            return settings
+    except FileNotFoundError:
+        print(f"Warning: App settings file not found at {APP_SETTINGS_PATH}")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"Error parsing app settings: {e}")
+        return {}
+
+def get_saucerswap_api_key() -> Optional[str]:
+    """Get SaucerSwap API key from app settings."""
+    settings = load_app_settings()
+    api_key = settings.get('SAUCER_SWAP_API_KEY')
+    if not api_key or api_key == "___":
+        print("Warning: SAUCER_SWAP_API_KEY not found or not set in app settings")
+        return None
+    return api_key
 
 def ensure_temp_dir():
     """Ensure temp data directory exists."""

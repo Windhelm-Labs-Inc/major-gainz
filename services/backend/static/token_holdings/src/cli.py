@@ -82,7 +82,10 @@ def handle_interactive_refresh(tokens_config, max_accounts, export_csv):
     
     # Confirm the batch update
     click.echo(f"\n📋 Selected tokens for update: {', '.join(tokens_to_update.keys())}")
-    click.echo(f"📊 Max accounts per token: {max_accounts:,}")
+    if max_accounts:
+        click.echo(f"📊 Max accounts per token: {max_accounts:,}")
+    else:
+        click.echo(f"📊 Max accounts per token: unlimited")
     click.echo(f"📄 Export CSV after refresh: {'Yes' if export_csv else 'No'}")
     
     if not click.confirm(f"\n🚀 Proceed with updating {len(tokens_to_update)} token(s)?", default=True):
@@ -113,10 +116,12 @@ def init():
 
 @cli.command()
 @click.option('--token', '-t', help='Specific token symbol to refresh (e.g., HBAR, SAUCE)')
-@click.option('--max-accounts', '-m', default=1000000, help='Maximum accounts to fetch per token')
+@click.option('--max-accounts', '-m', type=int, help='Maximum accounts to fetch per token (default: unlimited)')
 @click.option('--export-csv', '-e', is_flag=True, help='Export to CSV after refresh')
 @click.option('--interactive', '-i', is_flag=True, help='Interactive mode - prompt for tokens older than 24 hours')
-def refresh(token, max_accounts, export_csv, interactive):
+@click.option('--min-usd', type=float, help='Minimum USD value filter for holders')
+@click.option('--disable-usd', is_flag=True, help='Disable USD pricing features')
+def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
     """Refresh token holder data from Hedera API."""
     tokens_config = load_tokens_config()
     
@@ -142,16 +147,32 @@ def refresh(token, max_accounts, export_csv, interactive):
             tokens_to_refresh = tokens_config
     
     click.echo(f"🚀 Starting refresh for {len(tokens_to_refresh)} token(s)...")
-    click.echo(f"📊 Max accounts per token: {max_accounts:,}")
+    if max_accounts:
+        click.echo(f"📊 Max accounts per token: {max_accounts:,}")
+    else:
+        click.echo(f"📊 Max accounts per token: unlimited")
     
-    fetcher = HederaTokenFetcher()
+    # Convert USD filters to Decimal for precision
+    from decimal import Decimal
+    min_usd_decimal = Decimal(str(min_usd)) if min_usd else None
+    
+    if min_usd_decimal:
+        click.echo(f"💰 USD filter: min=${min_usd_decimal}")
+    
+    if disable_usd:
+        click.echo("⚠️  USD pricing features disabled")
+    
+    fetcher = HederaTokenFetcher(enable_usd_features=not disable_usd)
     successful_refreshes = []
     failed_refreshes = []
     
     start_time = datetime.utcnow()
     
     for token_symbol, token_id in tokens_to_refresh.items():
-        success = fetcher.refresh_token_data(token_symbol, token_id, max_accounts)
+        success = fetcher.refresh_token_data(
+            token_symbol, token_id, max_accounts, 
+            min_usd_decimal
+        )
         
         if success:
             successful_refreshes.append(token_symbol)

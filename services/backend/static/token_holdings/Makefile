@@ -1,4 +1,4 @@
-.PHONY: help setup install install-dev init refresh export status top percentiles cleanup clean test format lint
+.PHONY: help setup install install-dev init refresh export status top percentiles cleanup clean test test-unit test-integration test-coverage system-test format lint type-check build-production
 
 # Default target
 help:
@@ -16,6 +16,7 @@ help:
 	@echo "  make refresh-karate - Refresh only KARATE data"
 	@echo "  make refresh-interactive - Interactive mode (prompts for old data)"
 	@echo "  make refresh-interactive-quick - Interactive mode with limited accounts"
+	@echo "  make build-production - Build production database (unlimited accounts, 1 USD min)"
 	@echo "  make export      - Export all token data to CSV"
 	@echo "  make export-summary - Export summary of all tokens"
 	@echo "  make status      - Show status of all tokens"
@@ -23,7 +24,10 @@ help:
 	@echo "  make percentiles - Show percentiles for all tokens"
 	@echo "  make cleanup     - Clean up old data"
 	@echo "  make clean       - Remove database and temp files"
-	@echo "  make test        - Run basic system test"
+	@echo "  make test        - Run pytest tests"
+	@echo "  make test-unit   - Run unit tests only"
+	@echo "  make test-integration - Run integration tests"
+	@echo "  make system-test - Run basic system test"
 
 # Setup and install dependencies
 setup:
@@ -74,6 +78,16 @@ refresh-interactive:
 refresh-interactive-quick:
 	@echo "🤔 Interactive refresh mode (limited accounts)..."
 	poetry run python -m src.cli refresh --interactive --max-accounts 10000 --export-csv
+
+# Production database build
+build-production:
+	@echo "🏗️  Building production database..."
+	@echo "  - Unlimited accounts per token"
+	@echo "  - Minimum USD filter: $$1.00"
+	@echo "  - All enabled tokens"
+	@echo ""
+	poetry run python -m src.cli refresh --min-usd 1 --export-csv
+	@echo "✅ Production database build completed!"
 
 # Export commands
 export:
@@ -127,19 +141,19 @@ clean:
 	rm -rf .venv/
 	@echo "✅ Clean complete!"
 
-# Test command
-test:
+# System test command  
+system-test:
 	@echo "🧪 Running basic system test..."
 	@echo "1. Initializing system..."
 	poetry run python -m src.cli init
 	@echo "2. Checking status..."
 	poetry run python -m src.cli status
-	@echo "3. Running quick refresh for HBAR (1000 accounts)..."
+	@echo "3. Running refresh for HBAR (limited accounts)..."
 	poetry run python -m src.cli refresh --token HBAR --max-accounts 1000 --export-csv
 	@echo "4. Showing results..."
 	poetry run python -m src.cli status
 	poetry run python -m src.cli top --token HBAR --limit 5
-	@echo "✅ Test completed!"
+	@echo "✅ System test completed!"
 
 # Development helpers
 logs:
@@ -170,6 +184,22 @@ lint:
 type-check:
 	@echo "🔍 Type checking with MyPy..."
 	poetry run mypy src/
+
+test:
+	@echo "🧪 Running tests..."
+	poetry run pytest
+
+test-unit:
+	@echo "🧪 Running unit tests only..."
+	poetry run pytest -m "not integration"
+
+test-integration:
+	@echo "🧪 Running integration tests..."
+	poetry run pytest -m integration
+
+test-coverage:
+	@echo "🧪 Running tests with coverage..."
+	poetry run pytest --cov=src --cov-report=html --cov-report=term
 
 shell:
 	@echo "🐚 Starting Poetry shell..."
