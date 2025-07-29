@@ -12,7 +12,8 @@ export default defineConfig({
       '/ohlcv': 'http://localhost:8000',
       '/tokens': 'http://localhost:8000',
       '/portfolio': 'http://localhost:8000',
-      '/refresh': 'http://localhost:8000'
+      '/refresh': 'http://localhost:8000',
+      '/token_holdings': 'http://localhost:8000'
     }
   }
 }) 

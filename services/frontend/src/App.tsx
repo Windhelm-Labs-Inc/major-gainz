@@ -8,7 +8,7 @@ import WalletConnection from './components/WalletConnection'
 import AddressInput from './components/AddressInput'
 import ChatWindow from './components/ChatWindow'
 import AddressDisplay from './components/AddressDisplay'
-import TokenDetailsPopup from './components/TokenDetailsPopup'
+import TokenHolderAnalysis from './components/TokenHolderAnalysis'
 import './App.css'
 
 function App() {
@@ -59,7 +59,7 @@ function App() {
     setSelectedToken(holding)
   }
 
-  const handleClosePopup = () => {
+  const handleCloseAnalysis = () => {
     setSelectedToken(null)
   }
 
@@ -142,95 +142,109 @@ function App() {
   }, [portfolio])
 
   return (
-    <div className="container">
-      {/* Header Section */}
-      <div className="header">
-        <h1>Quick Origins</h1>
-        <p className="subtitle">
-          AI-Powered Portfolio Intelligence for Hedera Network
-        </p>
-      </div>
-      
-      {/* Wallet & Portfolio Section */}
-      <div className="wallet-section">
-        <NetworkSelector value={network} onChange={handleNetworkChange} />
-        
-        <h2>Wallet Connection</h2>
-        <WalletConnection 
-          onConnect={handleWalletConnect}
-          onDisconnect={handleWalletDisconnect}
-          connectedWallet={connectedWallet}
-          walletAddress={walletAddress}
-          hederaNetwork={network}
+    <div className="container" style={{ 
+      display: 'flex',
+      minHeight: '100vh',
+      paddingLeft: selectedToken ? '400px' : '0',
+      transition: 'padding-left 0.3s ease'
+    }}>
+      {/* Token Holder Analysis Sidebar */}
+      {selectedToken && (
+        <TokenHolderAnalysis 
+          selectedToken={selectedToken}
+          userAddress={selectedAddress}
+          onClose={handleCloseAnalysis}
         />
-        
-        <AddressInput 
-          onAddressChange={handleAddressInput}
-          address={manualAddress}
-        />
-        
-        <button onClick={handleSelectAddress} className="select-address-btn">
-          Select Current Address
-        </button>
-        
-        <AddressDisplay address={selectedAddress} />
+      )}
 
-        <button 
-          onClick={handleLoadPortfolio} 
-          disabled={isLoadingPortfolio || !selectedAddress} 
-          className="select-address-btn"
-          style={{ marginTop: '1rem' }}
-        >
-          {isLoadingPortfolio ? (
-            <span className="loading">Loading Portfolio</span>
-          ) : (
-            'Load Portfolio'
-          )}
-        </button>
+      {/* Main Content */}
+      <div style={{ flex: 1 }}>
+        {/* Header Section */}
+        <div className="header">
+          <h1>Quick Origins</h1>
+          <p className="subtitle">
+            AI-Powered Portfolio Intelligence for Hedera Network
+          </p>
+        </div>
+        
+        {/* Wallet & Portfolio Section */}
+        <div className="wallet-section">
+          <NetworkSelector value={network} onChange={handleNetworkChange} />
+          
+          <h2>Wallet Connection</h2>
+          <WalletConnection 
+            onConnect={handleWalletConnect}
+            onDisconnect={handleWalletDisconnect}
+            connectedWallet={connectedWallet}
+            walletAddress={walletAddress}
+            hederaNetwork={network}
+          />
+          
+          <AddressInput 
+            onAddressChange={handleAddressInput}
+            address={manualAddress}
+          />
+          
+          <button onClick={handleSelectAddress} className="select-address-btn">
+            Select Current Address
+          </button>
+          
+          <AddressDisplay address={selectedAddress} />
 
-        {portfolio && portfolio.holdings.length > 0 && (
-          <div style={{ 
-            display: 'flex', 
-            gap: '2rem', 
-            alignItems: 'flex-start', 
-            marginTop: '2rem',
-            flexWrap: 'wrap',
-            justifyContent: 'center'
-          }}>
-            <Suspense fallback={<div className="loading">Rendering chart</div>}>
-              <PortfolioChart 
-                data={portfolio.holdings} 
-                selectedTokenId={selectedToken?.tokenId || null}
-                onTokenSelect={handleTokenSelect}
-              />
-            </Suspense>
-            <Suspense fallback={<div className="loading">Loading table</div>}>
-              {(() => {
-                const Table = lazy(() => import('./components/PortfolioTable'))
-                return <Table 
+          <button 
+            onClick={handleLoadPortfolio} 
+            disabled={isLoadingPortfolio || !selectedAddress} 
+            className="select-address-btn"
+            style={{ marginTop: '1rem' }}
+          >
+            {isLoadingPortfolio ? (
+              <span className="loading">Loading Portfolio</span>
+            ) : (
+              'Load Portfolio'
+            )}
+          </button>
+
+          {portfolio && portfolio.holdings.length > 0 && (
+            <div style={{ 
+              display: 'flex', 
+              gap: '2rem', 
+              alignItems: 'flex-start', 
+              marginTop: '2rem',
+              flexWrap: 'wrap',
+              justifyContent: 'center'
+            }}>
+              <Suspense fallback={<div className="loading">Rendering chart</div>}>
+                <PortfolioChart 
                   data={portfolio.holdings} 
                   selectedTokenId={selectedToken?.tokenId || null}
                   onTokenSelect={handleTokenSelect}
                 />
-              })()}
-            </Suspense>
-          </div>
-        )}
-      </div>
-
-      {/* AI Chat Section */}
-      <div className="chat-section">
-        <div className="chat-header">
-          <h2 className="chat-title">AI Portfolio Assistant</h2>
-          <p className="chat-subtitle">
-            Get intelligent insights about your portfolio with advanced financial analysis
-          </p>
+              </Suspense>
+              <Suspense fallback={<div className="loading">Loading table</div>}>
+                {(() => {
+                  const Table = lazy(() => import('./components/PortfolioTable'))
+                  return <Table 
+                    data={portfolio.holdings} 
+                    selectedTokenId={selectedToken?.tokenId || null}
+                    onTokenSelect={handleTokenSelect}
+                  />
+                })()}
+              </Suspense>
+            </div>
+          )}
         </div>
-        <ChatWindow selectedAddress={selectedAddress} hederaNetwork={network} portfolio={portfolio || undefined} />
-      </div>
 
-      {/* Token Details Popup */}
-      <TokenDetailsPopup holding={selectedToken} onClose={handleClosePopup} />
+        {/* AI Chat Section */}
+        <div className="chat-section">
+          <div className="chat-header">
+            <h2 className="chat-title">AI Portfolio Assistant</h2>
+            <p className="chat-subtitle">
+              Get intelligent insights about your portfolio with advanced financial analysis
+            </p>
+          </div>
+          <ChatWindow selectedAddress={selectedAddress} hederaNetwork={network} portfolio={portfolio || undefined} />
+        </div>
+      </div>
     </div>
   )
 }
