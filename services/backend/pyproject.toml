@@ -2,7 +2,7 @@
 name = "hedera-ohlcv-api"
 version = "0.1.0"
 description = "FastAPI service providing OHLCV data for Hedera tokens"
-authors = ["Your Name <you@example.com>"]
+authors = ["Jonathan@Windhelm.finance"]
 packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
