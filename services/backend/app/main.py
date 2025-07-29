@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import Base, engine
 from .crud import refresh_all_tokens
 # Import routers including new portfolio
-from .routers import tokens, ohlcv, maintenance, portfolio
+from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings
 
 Base.metadata.create_all(bind=engine)
 
@@ -28,6 +28,7 @@ app.include_router(tokens.router)
 app.include_router(ohlcv.router)
 app.include_router(maintenance.router)
 app.include_router(portfolio.router)
+app.include_router(token_holdings.router)
 
 
 @app.on_event("startup")
