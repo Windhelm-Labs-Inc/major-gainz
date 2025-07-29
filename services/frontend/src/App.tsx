@@ -2,12 +2,13 @@
 // @ts-ignore – json import
 import settingsJson from '../appSettings.json'
 import { useState, lazy, Suspense, useEffect } from 'react'
-import type { Portfolio } from './types/portfolio'
+import type { Portfolio, Holding } from './types/portfolio'
 import NetworkSelector from './components/NetworkSelector'
 import WalletConnection from './components/WalletConnection'
 import AddressInput from './components/AddressInput'
 import ChatWindow from './components/ChatWindow'
 import AddressDisplay from './components/AddressDisplay'
+import TokenDetailsPopup from './components/TokenDetailsPopup'
 import './App.css'
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
   const [selectedAddress, setSelectedAddress] = useState<string>('')
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false)
+  const [selectedToken, setSelectedToken] = useState<Holding | null>(null)
 
   const PortfolioChart = lazy(() => import('./components/PortfolioChart'))
 
@@ -50,6 +52,15 @@ function App() {
     setSelectedAddress(addressToSelect)
     // reset portfolio when address changes
     setPortfolio(null)
+  }
+
+  const handleTokenSelect = (holding: Holding) => {
+    console.log('[App] Token selected:', holding.symbol)
+    setSelectedToken(holding)
+  }
+
+  const handleClosePopup = () => {
+    setSelectedToken(null)
   }
 
   const handleLoadPortfolio = async () => {
@@ -187,12 +198,20 @@ function App() {
             justifyContent: 'center'
           }}>
             <Suspense fallback={<div className="loading">Rendering chart</div>}>
-              <PortfolioChart data={portfolio.holdings} />
+              <PortfolioChart 
+                data={portfolio.holdings} 
+                selectedTokenId={selectedToken?.tokenId || null}
+                onTokenSelect={handleTokenSelect}
+              />
             </Suspense>
             <Suspense fallback={<div className="loading">Loading table</div>}>
               {(() => {
                 const Table = lazy(() => import('./components/PortfolioTable'))
-                return <Table data={portfolio.holdings} />
+                return <Table 
+                  data={portfolio.holdings} 
+                  selectedTokenId={selectedToken?.tokenId || null}
+                  onTokenSelect={handleTokenSelect}
+                />
               })()}
             </Suspense>
           </div>
@@ -209,6 +228,9 @@ function App() {
         </div>
         <ChatWindow selectedAddress={selectedAddress} hederaNetwork={network} portfolio={portfolio || undefined} />
       </div>
+
+      {/* Token Details Popup */}
+      <TokenDetailsPopup holding={selectedToken} onClose={handleClosePopup} />
     </div>
   )
 }
