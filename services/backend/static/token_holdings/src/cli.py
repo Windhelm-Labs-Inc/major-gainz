@@ -5,14 +5,49 @@ import click
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
+import signal
 from tabulate import tabulate
+from pathlib import Path
+from typing import Optional
 
 from .config import load_tokens_config, ensure_temp_dir
-from .database import init_database, get_session
+from .database import init_database, get_session, get_db_session, TokenMetadata
 from .fetchers import HederaTokenFetcher
-from .utils import export_to_csv, export_all_tokens_summary, get_token_summary, get_top_holders, get_percentiles, cleanup_old_data, get_tokens_needing_refresh
+from .utils import get_token_summary, get_top_holders, get_percentiles, cleanup_old_data, get_tokens_needing_refresh
 from .services import validate_tokens_before_operation, TokenValidationError
 
+# --- Graceful Shutdown Handler ---
+
+def setup_signal_handler():
+    """Sets up a signal handler for graceful shutdown."""
+    
+    def graceful_shutdown(signum, frame):
+        print("\n🚫 Aborted! Cleaning up before exit...")
+        
+        try:
+            with get_db_session() as session:
+                # Find any tokens that were marked as "in progress" and reset them
+                in_progress_tokens = session.query(TokenMetadata).filter_by(refresh_in_progress=True).all()
+                
+                if in_progress_tokens:
+                    print("🔧 Resetting 'in progress' status for:")
+                    for token_meta in in_progress_tokens:
+                        print(f"  - {token_meta.token_symbol}")
+                        token_meta.refresh_in_progress = False
+                    
+                    session.commit()
+                    print("✅ Cleanup complete.")
+                else:
+                    print("✅ No pending operations to clean up.")
+        
+        except Exception as e:
+            print(f"⚠️  Error during cleanup: {e}")
+        
+        sys.exit(1)
+
+    signal.signal(signal.SIGINT, graceful_shutdown)
+
+# --- Logging Configuration ---
 # Configure logging with critical level visibility
 logging.basicConfig(
     level=logging.INFO,
@@ -28,9 +63,10 @@ critical_logger = logging.getLogger('src.services.token_validator')
 critical_logger.setLevel(logging.CRITICAL)
 
 
-def handle_interactive_refresh(tokens_config, max_accounts, export_csv):
-    """Handle interactive mode for token refresh."""
-    click.echo("🔍 Checking token data age...")
+def handle_interactive_refresh(max_accounts: Optional[int], min_usd_decimal: Optional[Decimal], 
+                               enable_usd_features: bool, stream_to_csv: bool):
+    """Handle the interactive refresh process."""
+    click.echo("🔎 Checking for stale token data (older than 24 hours)...")
     
     # Check which tokens need refresh
     tokens_status = get_tokens_needing_refresh(hours_threshold=24)
@@ -103,7 +139,7 @@ def handle_interactive_refresh(tokens_config, max_accounts, export_csv):
         click.echo(f"📊 Max accounts per token: {max_accounts:,}")
     else:
         click.echo(f"📊 Max accounts per token: unlimited")
-    click.echo(f"📄 Export CSV after refresh: {'Yes' if export_csv else 'No'}")
+    click.echo(f"📄 Export CSV during refresh: {'Yes' if stream_to_csv else 'No'}")
     
     if not click.confirm(f"\n🚀 Proceed with updating {len(tokens_to_update)} token(s)?", default=True):
         click.echo("🚫 Update cancelled by user.")
@@ -119,7 +155,7 @@ def cli():
     
     Track and analyze token holder distributions on Hedera network.
     """
-    pass
+    setup_signal_handler()
 
 
 @cli.command()
@@ -144,12 +180,20 @@ def init():
 @cli.command()
 @click.option('--token', '-t', help='Specific token symbol to refresh (e.g., HBAR, SAUCE)')
 @click.option('--max-accounts', '-m', type=int, help='Maximum accounts to fetch per token (default: unlimited)')
-@click.option('--export-csv', '-e', is_flag=True, help='Export to CSV after refresh')
+@click.option('--export-csv', '-e', is_flag=True, help='Stream raw API data to a CSV file during refresh.')
 @click.option('--interactive', '-i', is_flag=True, help='Interactive mode - prompt for tokens older than 24 hours')
 @click.option('--min-usd', type=float, help='Minimum USD value filter for holders')
 @click.option('--disable-usd', is_flag=True, help='Disable USD pricing features')
 def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
     """Refresh token holder data from Hedera API."""
+    
+    # Ensure database is initialized before any operations
+    try:
+        init_database()
+    except Exception as e:
+        click.echo(f"❌ Critical error: Database could not be initialized: {e}")
+        sys.exit(1)
+        
     # Input validation
     if max_accounts is not None:
         if max_accounts <= 0:
@@ -197,28 +241,26 @@ def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
             click.echo(f"Available tokens: {', '.join(tokens_config.keys())}")
             sys.exit(1)
     
+    # Convert USD filters to Decimal for precision
+    min_usd_decimal = Decimal(str(min_usd)) if min_usd is not None else None
+
     # Handle interactive mode
     if interactive:
-        tokens_to_refresh = handle_interactive_refresh(tokens_config, max_accounts, export_csv)
-        if not tokens_to_refresh:
-            click.echo("🤷 No tokens selected for refresh.")
-            return
+        handle_interactive_refresh(max_accounts, min_usd_decimal, not disable_usd, export_csv)
+        return
+    
+    # Handle non-interactive mode (existing logic)
+    if token:
+        # Token was already validated and normalized above
+        tokens_to_refresh = {token: tokens_config[token]}
     else:
-        # Handle non-interactive mode (existing logic)
-        if token:
-            # Token was already validated and normalized above
-            tokens_to_refresh = {token: tokens_config[token]}
-        else:
-            tokens_to_refresh = tokens_config
+        tokens_to_refresh = tokens_config
     
     click.echo(f"🚀 Starting refresh for {len(tokens_to_refresh)} token(s)...")
     if max_accounts:
         click.echo(f"📊 Max accounts per token: {max_accounts:,}")
     else:
         click.echo(f"📊 Max accounts per token: unlimited")
-    
-    # Convert USD filters to Decimal for precision
-    min_usd_decimal = Decimal(str(min_usd)) if min_usd else None
     
     if min_usd_decimal:
         click.echo(f"💰 USD filter: min=${min_usd_decimal}")
@@ -235,17 +277,15 @@ def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
     for token_symbol, token_id in tokens_to_refresh.items():
         success = fetcher.refresh_token_data(
             token_symbol, token_id, max_accounts, 
-            min_usd_decimal
+            min_usd_decimal, stream_to_csv=export_csv
         )
         
         if success:
             successful_refreshes.append(token_symbol)
             
-            if export_csv:
-                click.echo(f"\n📄 Exporting {token_symbol} to CSV...")
-                csv_path = export_to_csv(token_symbol)
-                if csv_path:
-                    click.echo(f"✅ CSV exported: {csv_path}")
+            # The export_to_csv function is no longer used here,
+            # as the CSV streaming is handled by HederaTokenFetcher.
+            # If specific CSV export is needed, it should be re-added or handled differently.
         else:
             failed_refreshes.append(token_symbol)
     
@@ -275,73 +315,77 @@ def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
 
 
 @cli.command()
-@click.option('--token', '-t', help='Specific token symbol to export')
-@click.option('--include-percentiles/--top-only', default=True, help='Include percentile data or top holders only')
-@click.option('--summary', '-s', is_flag=True, help='Export summary of all tokens')
-def export(token, include_percentiles, summary):
-    """Export token data to CSV files."""
-    ensure_temp_dir()
-    
-    if summary:
-        click.echo("📊 Exporting summary of all tokens...")
-        csv_path = export_all_tokens_summary()
-        if csv_path:
-            click.echo(f"✅ Summary exported: {csv_path}")
-        return
-    
-    if token:
-        csv_path = export_to_csv(token, include_percentiles)
-        if csv_path:
-            click.echo(f"✅ {token} data exported: {csv_path}")
-    else:
-        # Export all tokens
-        tokens_config = load_tokens_config()
-        for token_symbol in tokens_config.keys():
-            csv_path = export_to_csv(token_symbol, include_percentiles)
-            if csv_path:
-                click.echo(f"✅ {token_symbol} data exported: {csv_path}")
-
-
-@cli.command()
-@click.option('--token', '-t', help='Specific token symbol to show')
+@click.option('--token', help='Specific token to check status for (e.g., HBAR)')
 def status(token):
     """Show status and summary of all tokens."""
-    summary_data = get_token_summary()
+    ensure_temp_dir() # Ensure temp dir is set up for CSV files
     
-    if not summary_data:
-        click.echo("📭 No token data found. Run 'refresh' command first.")
-        return
-    
-    # Prepare table data
-    headers = [
-        'Token', 'Token ID', 'Last Refresh', 'Success', 'Total Accounts', 
-        'Top Holders', 'Percentiles', 'In Progress', 'Error'
-    ]
-    
-    rows = []
-    for token in summary_data:
-        last_refresh = "Never"
-        if token['last_refresh_completed']:
-            last_refresh = token['last_refresh_completed'].strftime('%Y-%m-%d %H:%M')
+    with get_db_session() as db_session:
+        tokens_config = load_tokens_config()
         
-        success_icon = "✅" if token['last_refresh_success'] else "❌"
-        progress_icon = "🔄" if token['refresh_in_progress'] else ""
-        error_msg = token['error_message'][:30] + "..." if token['error_message'] and len(token['error_message']) > 30 else token['error_message'] or ""
+        # Convert dict to list of dicts for consistent handling
+        tokens = [{'symbol': symbol, 'token_id': token_id} 
+                 for symbol, token_id in tokens_config.items()]
         
-        rows.append([
-            token['token_symbol'],
-            token['token_id'],
-            last_refresh,
-            success_icon,
-            f"{token['total_accounts_fetched']:,}" if token['total_accounts_fetched'] else "0",
-            str(token['top_holders_count']),
-            str(token['percentiles_count']),
-            progress_icon,
-            error_msg
-        ])
-    
-    click.echo("📊 Token Holdings Status:")
-    click.echo(tabulate(rows, headers=headers, tablefmt='grid'))
+        if not tokens_config:
+            click.echo("❌ No token configuration found. Run 'init' and 'refresh' first.")
+            sys.exit(1)
+            
+        if token:
+            tokens = [t for t in tokens if t['symbol'].upper() == token.upper()]
+            if not tokens:
+                click.echo(f"❌ Token '{token}' not found in configuration.")
+                available_tokens = list(tokens_config.keys())
+                click.echo(f"Available tokens: {', '.join(available_tokens)}")
+                sys.exit(1)
+
+        if not tokens:
+            click.echo("No token data found in the database. Run 'init' and 'refresh' first.")
+            return
+        
+        click.echo("\n" + "="*80)
+        click.echo("📊 TOKEN HOLDINGS SYSTEM STATUS")
+        click.echo("="*80)
+        
+        table_data = []
+        headers = [
+            "Token", "Token ID", "Last Refresh", "Status", 
+            "Accounts", "Price (USD)", "Price Updated"
+        ]
+        
+        metadata_records = {m.token_symbol: m for m in db_session.query(TokenMetadata).all()}
+        
+        for t in tokens:
+            symbol = t['symbol']
+            metadata = metadata_records.get(symbol)
+            
+            if not metadata:
+                table_data.append([symbol, t['token_id'], "Never", "Not found", "", "", ""])
+                continue
+                
+            last_refresh = metadata.last_refresh_completed
+            if last_refresh:
+                time_since_refresh = datetime.utcnow() - last_refresh.replace(tzinfo=None)
+                last_refresh_str = f"{time_since_refresh.days}d {time_since_refresh.seconds//3600}h ago"
+            else:
+                last_refresh_str = "Never"
+                
+            status = "✅ OK" if metadata.last_refresh_success else "❌ Failed"
+            if metadata.refresh_in_progress:
+                status = "⏳ In Progress"
+                
+            accounts = f"{metadata.total_accounts_fetched:,}" if metadata.total_accounts_fetched else ""
+            
+            price_usd = f"${metadata.price_usd:.6f}" if metadata.price_usd else "N/A"
+            price_updated = metadata.price_updated_at.strftime('%Y-%m-%d %H:%M') if metadata.price_updated_at else "N/A"
+            
+            table_data.append([
+                symbol, metadata.token_id, last_refresh_str, status,
+                accounts, price_usd, price_updated
+            ])
+
+        click.echo(tabulate(table_data, headers=headers, tablefmt="grid"))
+        click.echo("")
 
 
 @cli.command()
@@ -403,15 +447,10 @@ def percentiles(token, percentiles):
 @click.option('--keep', '-k', default=5, help='Number of latest refreshes to keep')
 @click.confirmation_option(prompt='This will delete old data. Continue?')
 def cleanup(token, keep):
-    """Clean up old refresh data, keeping only recent refreshes."""
-    click.echo(f"🗑️  Cleaning up old data (keeping latest {keep} refreshes)...")
-    
-    deleted_count = cleanup_old_data(token, keep)
-    
-    if deleted_count > 0:
-        click.echo(f"✅ Cleaned up {deleted_count:,} old records")
-    else:
-        click.echo("✅ No old data to clean up")
+    """Clean up old data from the database."""
+    click.echo("🗑️  Cleaning up old database records...")
+    cleanup_old_data(token, keep)
+    click.echo("✅ Cleanup complete.")
 
 
 if __name__ == '__main__':

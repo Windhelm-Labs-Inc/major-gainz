@@ -1,15 +1,10 @@
-"""CSV export utilities for token holdings data."""
+"""Utilities for streaming API data to CSV files."""
 
-import os
 import hashlib
-import pandas as pd
+import csv
 from pathlib import Path
-from typing import Optional
-from datetime import datetime
+from typing import List, Dict, Any, Optional
 import logging
-
-from ..database import get_session, TokenHolding, TokenMetadata, get_db_session
-from ..config import ensure_temp_dir
 
 logger = logging.getLogger(__name__)
 
@@ -27,198 +22,98 @@ def hash_file(filepath: Path) -> str:
         raise
 
 
-def export_to_csv(token_symbol: str, include_percentiles: bool = True) -> Optional[str]:
-    """Export token holdings data to CSV file."""
-    temp_dir = ensure_temp_dir()
-    
-    try:
-        with get_db_session() as db_session:
-            print(f"📄 Exporting {token_symbol} data to CSV...")
-            
-            # Query data
-            query = db_session.query(TokenHolding).filter_by(token_symbol=token_symbol)
-            
-            if include_percentiles:
-                # Get both top holders and percentiles
-                holdings = query.all()
-            else:
-                # Get only top holders
-                holdings = query.filter_by(is_top_holder=True).all()
-            
-            if not holdings:
-                print(f"  ⚠️  No data found for {token_symbol}")
-                return None
-            
-            # Convert to DataFrame
-            data = []
-            for holding in holdings:
-                try:
-                    row = {
-                        'token_symbol': holding.token_symbol,
-                        'account_id': holding.account_id,
-                        'balance': holding.balance,
-                        'balance_rank': holding.balance_rank,
-                        'percentile_rank': holding.percentile_rank,
-                        'is_top_holder': holding.is_top_holder,
-                        'is_percentile_marker': holding.is_percentile_marker,
-                        'refresh_batch_id': holding.refresh_batch_id,
-                        'created_at': holding.created_at
-                    }
-                    
-                    # Add USD fields if available
-                    if hasattr(holding, 'usd_value') and holding.usd_value is not None:
-                        row['usd_value'] = float(holding.usd_value)
-                    if hasattr(holding, 'price_usd_at_refresh') and holding.price_usd_at_refresh is not None:
-                        row['price_usd_at_refresh'] = float(holding.price_usd_at_refresh)
-                    
-                    data.append(row)
-                except AttributeError as e:
-                    logger.warning(f"Missing expected field in holding data: {e}")
-                    continue
-            
-            if not data:
-                print(f"  ⚠️  No valid data to export for {token_symbol}")
-                return None
-            
-            try:
-                df = pd.DataFrame(data)
-            except (ValueError, TypeError) as e:
-                logger.error(f"Error creating DataFrame for {token_symbol}: {e}")
-                print(f"  ❌ Failed to create data structure for export: {e}")
-                return None
-            
-            # Sort data (top holders first, then by rank/percentile)
-            try:
-                df = df.sort_values([
-                    'is_top_holder', 
-                    'balance_rank', 
-                    'percentile_rank'
-                ], ascending=[False, True, False])
-            except KeyError as e:
-                logger.warning(f"Error sorting data for {token_symbol}: {e}")
-                # Continue without sorting if columns are missing
-            
-            # Generate filename with timestamp
-            timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-            filename = f"{token_symbol.lower()}_holdings_{timestamp}.csv"
-            filepath = temp_dir / filename
-            
-            # Export to CSV
-            try:
-                df.to_csv(filepath, index=False)
-            except (IOError, OSError, PermissionError) as e:
-                logger.error(f"Error writing CSV file {filepath}: {e}")
-                print(f"  ❌ Failed to write CSV file: {e}")
-                return None
-            
-            # Calculate file hash
-            try:
-                file_hash = hash_file(filepath)
-            except Exception as e:
-                logger.error(f"Error calculating file hash: {e}")
-                file_hash = "unknown"
-            
-            # Update metadata with CSV info
-            try:
-                metadata = db_session.query(TokenMetadata).filter_by(token_symbol=token_symbol).first()
-                if metadata:
-                    metadata.csv_filepath = str(filepath)
-                    metadata.csv_file_hash = file_hash
-                    # Note: commit handled by context manager
-            except Exception as e:
-                logger.warning(f"Error updating metadata for {token_symbol}: {e}")
-                # Continue anyway - file was exported successfully
-            
-            print(f"  ✅ Exported {len(df)} records to: {filepath}")
-            print(f"  🔐 File hash: {file_hash[:16]}...")
-            
-            return str(filepath)
-            
-    except RuntimeError as e:
-        # Database errors from our context manager
-        print(f"  ❌ Database error during CSV export: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error during CSV export for {token_symbol}: {e}")
-        print(f"  ❌ CSV export failed unexpectedly: {e}")
-        return None
+# -----------------------------------------------------------
+# ApiCsvStreamer
+# -----------------------------------------------------------
+# * Streams raw API data dictionaries directly to CSV.
+# * Learns the header row from the first chunk if none supplied.
+# * Uses extrasaction='ignore' so unexpected keys never crash.
+# -----------------------------------------------------------
 
+class ApiCsvStreamer:
+    """Handles streaming of raw API data chunks to a CSV file."""
 
-def export_all_tokens_summary() -> Optional[str]:
-    """Export a summary CSV with all tokens' top holders."""
-    temp_dir = ensure_temp_dir()
-    
-    try:
-        with get_db_session() as db_session:
-            print("📊 Exporting summary of all tokens...")
+    def __init__(self, filepath: Path, fieldnames: Optional[List[str]] = None):
+        """
+        Initializes the streamer with a file path and defined CSV headers.
+        
+        Args:
+            filepath: The path to the CSV file to write to.
+            fieldnames: A list of strings for the CSV header row.
+        """
+        self.filepath = filepath
+        # Fieldnames may be supplied or learned lazily.
+        self.fieldnames = fieldnames  # Optional upfront header definition
+
+        # Internals
+        self._buffer: List[Dict[str, Any]] = []
+        self._file_exists = filepath.exists()
+        self._writer: Optional[csv.DictWriter] = None
+        self._file: Optional[open] = None
+
+    # -----------------------------------------
+    # Internal helpers
+    # -----------------------------------------
+    def _initialise_writer(self, sample_row: Dict[str, Any]):
+        """Initialise the CSV writer lazily using the keys from `sample_row` if needed."""
+        if self._writer is not None:
+            return  # Already initialised
+
+        # Determine fieldnames if they were not provided
+        if self.fieldnames is None:
+            self.fieldnames = list(sample_row.keys())
+
+        try:
+            # Open the file in append mode, create if missing
+            self._file = open(self.filepath, 'a', newline='', encoding='utf-8')
+
+            # Use extrasaction='ignore' so unexpected keys never raise
+            self._writer = csv.DictWriter(
+                self._file,
+                fieldnames=self.fieldnames,
+                extrasaction='ignore'
+            )
+
+            # Write header if file newly created
+            if not self._file_exists:
+                self._writer.writeheader()
+        except (IOError, OSError) as e:
+            logger.critical(f"FATAL: Could not open CSV file for streaming at {self.filepath}: {e}")
+            raise
+
+    def add_chunk(self, data: List[Dict[str, Any]]):
+        """Adds a chunk of raw API data to the internal buffer."""
+        if data:
+            self._buffer.extend(data)
+
+    def flush(self) -> int:
+        """
+        Writes the buffered data to the CSV file and clears the buffer.
+        
+        Returns:
+            The number of records written.
+        """
+        if not self._buffer:
+            return 0
+
+        # Ensure writer is ready based on first row
+        self._initialise_writer(self._buffer[0])
+
+        num_records = len(self._buffer)
+
+        try:
+            assert self._writer is not None  # mypy / type-safety
+            self._writer.writerows(self._buffer)
+        except (IOError, OSError, csv.Error) as e:
+            logger.error(f"Error streaming data to CSV {self.filepath}: {e}")
+            return 0
+        finally:
+            self._buffer.clear()
             
-            # Query top holders for all tokens
-            try:
-                holdings = db_session.query(TokenHolding).filter_by(is_top_holder=True).all()
-            except Exception as e:
-                logger.error(f"Error querying top holders: {e}")
-                print(f"  ❌ Failed to query data: {e}")
-                return None
-            
-            if not holdings:
-                print("  ⚠️  No top holder data found")
-                return None
-            
-            # Convert to DataFrame
-            data = []
-            for holding in holdings:
-                try:
-                    row = {
-                        'token_symbol': holding.token_symbol,
-                        'account_id': holding.account_id,
-                        'balance': holding.balance,
-                        'balance_rank': holding.balance_rank,
-                        'created_at': holding.created_at
-                    }
-                    
-                    # Add USD fields if available
-                    if hasattr(holding, 'usd_value') and holding.usd_value is not None:
-                        row['usd_value'] = float(holding.usd_value)
-                    if hasattr(holding, 'price_usd_at_refresh') and holding.price_usd_at_refresh is not None:
-                        row['price_usd_at_refresh'] = float(holding.price_usd_at_refresh)
-                    
-                    data.append(row)
-                except AttributeError as e:
-                    logger.warning(f"Missing expected field in summary data: {e}")
-                    continue
-            
-            if not data:
-                print("  ⚠️  No valid data to export for summary")
-                return None
-            
-            try:
-                df = pd.DataFrame(data)
-                df = df.sort_values(['token_symbol', 'balance_rank'])
-            except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Error processing summary data: {e}")
-                print(f"  ❌ Failed to process summary data: {e}")
-                return None
-            
-            # Generate filename
-            timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-            filename = f"all_tokens_summary_{timestamp}.csv"
-            filepath = temp_dir / filename
-            
-            try:
-                df.to_csv(filepath, index=False)
-            except (IOError, OSError, PermissionError) as e:
-                logger.error(f"Error writing summary CSV file {filepath}: {e}")
-                print(f"  ❌ Failed to write summary file: {e}")
-                return None
-            
-            print(f"  ✅ Exported summary with {len(df)} records to: {filepath}")
-            return str(filepath)
-            
-    except RuntimeError as e:
-        # Database errors from our context manager
-        print(f"  ❌ Database error during summary export: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error during summary export: {e}")
-        print(f"  ❌ Summary export failed unexpectedly: {e}")
-        return None 
+        return num_records
+
+    def close(self):
+        """Flushes any remaining data and closes the file."""
+        self.flush()
+        if self._file:
+            self._file.close()

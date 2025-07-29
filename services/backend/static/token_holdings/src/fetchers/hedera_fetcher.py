@@ -6,18 +6,20 @@ import uuid
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
-from tqdm import tqdm
 import logging
+from pathlib import Path
+import traceback
 
 from ..config import (
     HEDERA_ACCOUNTS_ENDPOINT, HEDERA_TOKENS_ENDPOINT,
     RATE_LIMIT_SLEEP, MAX_PAGE_SIZE, REQUEST_TIMEOUT,
     MAX_RETRIES, BACKOFF_FACTOR, DEFAULT_HEADERS,
     MIN_BALANCE_THRESHOLDS, PROGRESS_REPORT_INTERVAL,
-    get_saucerswap_api_key
+    get_saucerswap_api_key, load_decimals_config, ensure_temp_dir
 )
-from ..database import get_session, TokenMetadata, TokenHolding, RefreshLog, TokenPriceHistory
+from ..database import get_db_session, TokenMetadata, TokenHolding, RefreshLog, TokenPriceHistory
 from ..services import SaucerSwapPricingService, TokenFilterService
+from ..utils.csv_export import ApiCsvStreamer
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,13 @@ class HederaTokenFetcher:
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
         self.request_count = 0
+        self.decimals_config = load_decimals_config()
+        
+        # For progress reporting
+        self.last_report_time = 0
+        self.accounts_since_last_report = 0
+        self.streamer: Optional[ApiCsvStreamer] = None
+        self.streamed_count = 0
         
         # Initialize pricing services if API key is available
         self.pricing_service = None
@@ -107,7 +116,11 @@ class HederaTokenFetcher:
             if not price_usd:
                 return None, None
             
-            tokens_per_usd = Decimal("1") / price_usd if price_usd > 0 else None
+            try:
+                tokens_per_usd = Decimal("1") / price_usd if price_usd > 0 else None
+            except TypeError:
+                logger.critical(f"TYPE ERROR during price division! price_usd: {price_usd} (type: {type(price_usd)})")
+                raise
             
             # Update token metadata
             metadata = db_session.query(TokenMetadata).filter_by(token_symbol=token_symbol).first()
@@ -150,69 +163,118 @@ class HederaTokenFetcher:
             "limit": MAX_PAGE_SIZE
         }
         
-        with tqdm(desc="HBAR holders", unit="accounts") as pbar:
-            while url and (max_accounts is None or len(holders) < max_accounts):
-                if self.request_count % PROGRESS_REPORT_INTERVAL == 0 and holders:
-                    last = holders[-1]
-                    usd_info = f" (${last.get('usd_value', 'N/A')} USD)" if 'usd_value' in last else ""
-                    print(f"  📊 Request #{self.request_count}: {len(holders):,} accounts | "
-                          f"Last: {last['account_id']} ({last['balance_hbar']:.4f} HBAR{usd_info})")
+        self.last_report_time = time.time()
+        self.accounts_since_last_report = 0
+        self.streamed_count = 0
+        
+        print("  Fetching pages from mirror node...")
+        while url and (max_accounts is None or len(holders) < max_accounts):
+            # Make request
+            if "?" in url:
+                data = self._make_request_with_retry(url)
+            else:
+                data = self._make_request_with_retry(url, params)
                 
-                # Make request
-                if "?" in url:
-                    data = self._make_request_with_retry(url)
-                else:
-                    data = self._make_request_with_retry(url, params)
-                    
-                if not data:
-                    print(f"  ❌ Failed to fetch data, stopping")
+            if not data:
+                print(f"\n  ❌ Failed to fetch data, stopping")
+                break
+            
+            # Process accounts
+            accounts_in_page = data.get("accounts", [])
+            
+            # Stream raw data to CSV if streamer is configured
+            if self.streamer:
+                self.streamer.add_chunk(accounts_in_page)
+
+            for account in accounts_in_page:
+                raw_balance = account.get("balance", 0)
+                if isinstance(raw_balance, dict):
+                    raw_balance = raw_balance.get("balance", raw_balance.get("tinybars", 0))
+                
+                try:
+                    # Convert from tinybars to HBAR
+                    decimals = self.decimals_config.get("HBAR", 8)
+                    balance = Decimal(str(raw_balance or "0")) / (Decimal(10) ** decimals)
+                except TypeError:
+                    logger.critical(f"TYPE ERROR during HBAR balance division! raw_balance: {raw_balance} (type: {type(raw_balance)}), decimals: {decimals} (type: {type(decimals)})")
+                    raise
+                except (InvalidOperation, TypeError):
+                    print(f"  ⚠️  Invalid balance {raw_balance} for {account.get('account')}")
+                    continue
+                
+                holder = {
+                    "account_id": account.get("account"),
+                    "balance": balance,
+                }
+                
+                holders.append(holder)
+                
+                if max_accounts and len(holders) >= max_accounts:
                     break
+            
+            self.accounts_since_last_report += len(accounts_in_page)
+
+            # Progress Reporting
+            if self.request_count > 0 and self.request_count % PROGRESS_REPORT_INTERVAL == 0 and holders:
+                current_time = time.time()
+                elapsed_time = current_time - self.last_report_time
+                try:
+                    rate = self.accounts_since_last_report / elapsed_time if elapsed_time > 0 else 0
+                except TypeError:
+                    logger.critical(f"TYPE ERROR during HBAR rate division! accounts: {self.accounts_since_last_report} (type: {type(self.accounts_since_last_report)}), time: {elapsed_time} (type: {type(elapsed_time)})")
+                    raise
                 
-                # Process accounts
-                for account in data.get("accounts", []):
-                    raw_balance = account.get("balance", 0)
-                    if isinstance(raw_balance, dict):
-                        raw_balance = raw_balance.get("balance", raw_balance.get("tinybars", 0))
-                    
-                    try:
-                        tinybars = int(Decimal(raw_balance).to_integral_value(rounding="ROUND_DOWN"))
-                    except (InvalidOperation, TypeError):
-                        print(f"  ⚠️  Invalid balance {raw_balance} for {account.get('account')}")
-                        continue
-                    
-                    hbar_balance = float(Decimal(tinybars) / Decimal("1e8"))
-                    
-                    holder = {
-                        "account_id": account.get("account"),
-                        "balance_hbar": hbar_balance,
-                        "balance_tinybars": tinybars
-                    }
-                    
-                    holders.append(holder)
-                    pbar.update(1)
-                    
-                    if max_accounts and len(holders) >= max_accounts:
-                        print(f"  ✅ Reached {max_accounts:,} accounts limit")
-                        break
+                # Flush streamed data
+                if self.streamer:
+                    self.streamed_count += self.streamer.flush()
                 
-                # Get next page
-                next_link = data.get("links", {}).get("next")
-                if next_link:
-                    url = f"https://mainnet-public.mirrornode.hedera.com{next_link}"
-                    params = None
-                else:
-                    print(f"  ✅ No more pages. Total: {len(holders):,} accounts")
-                    break
+                last = holders[-1]
+                # Convert Decimal to float for stable printing, without affecting stored data precision
+                balance_for_display = float(last['balance'])
+                progress_line = (
+                    f"  -> Fetched {len(holders):,} accounts ({rate:,.0f} accts/s) | "
+                    f"Streamed: {self.streamed_count:,} | Last Balance: {balance_for_display:,.4f} HBAR"
+                )
+                print(f"{progress_line.ljust(100)}", end='\r')
+
+                self.last_report_time = current_time
+                self.accounts_since_last_report = 0
+
+            if max_accounts and len(holders) >= max_accounts:
+                print(f"\n  ✅ Reached {max_accounts:,} accounts limit")
+                break
+            
+            # Get next page
+            next_link = data.get("links", {}).get("next")
+            if next_link:
+                url = f"https://mainnet-public.mirrornode.hedera.com{next_link}"
+                params = None
+            else:
+                # Final progress update before finishing
+                rate = len(holders) / (time.time() - self.last_report_time) if time.time() - self.last_report_time > 0 else 0
+                
+                if self.streamer:
+                    self.streamed_count += self.streamer.flush()
+                
+                progress_line = (
+                    f"  -> Fetched {len(holders):,} accounts ({rate:,.0f} accts/s)... Done. | "
+                    f"Total streamed: {self.streamed_count:,}"
+                )
+                print(f"{progress_line.ljust(100)}")
+                print(f"  ✅ No more pages. Total: {len(holders):,} accounts")
+                break
+        
+        print() # Final newline to ensure clean output
         
         # Apply USD filtering if requested and pricing service is available
         if min_usd_value and self.filter_service:
             print(f"💰 Applying USD filters...")
             holders = self.filter_service.filter_holders_by_usd_value(
-                holders, "0.0.0", min_usd_value, "balance_hbar"
+                holders, "0.0.0", min_usd_value, "balance"
             )
         elif self.filter_service:
             # Add USD values even if not filtering
-            holders = self.filter_service.calculate_usd_values(holders, "0.0.0", "balance_hbar")
+            holders = self.filter_service.calculate_usd_values(holders, "0.0.0", "balance")
         
         return holders
     
@@ -233,56 +295,111 @@ class HederaTokenFetcher:
             "limit": MAX_PAGE_SIZE
         }
         
-        with tqdm(desc=f"{token_symbol} holders", unit="accounts") as pbar:
-            while url and (max_accounts is None or len(holders) < max_accounts):
-                if self.request_count % PROGRESS_REPORT_INTERVAL == 0 and holders:
-                    last = holders[-1]
-                    usd_info = f" (${last.get('usd_value', 'N/A')} USD)" if 'usd_value' in last else ""
-                    print(f"  📊 Request #{self.request_count}: {len(holders):,} accounts | "
-                          f"Last: {last['account_id']} ({last['balance']:.4f} {token_symbol}{usd_info})")
+        self.last_report_time = time.time()
+        self.accounts_since_last_report = 0
+        self.streamed_count = 0
+        
+        print("  Fetching pages from mirror node...")
+        while url and (max_accounts is None or len(holders) < max_accounts):
+            # Make request  
+            if "?" in url:
+                data = self._make_request_with_retry(url)
+            else:
+                data = self._make_request_with_retry(url, params)
                 
-                # Make request  
-                if "?" in url:
-                    data = self._make_request_with_retry(url)
-                else:
-                    data = self._make_request_with_retry(url, params)
+            if not data:
+                print(f"\n  ❌ Failed to fetch data, stopping")
+                break
+            
+            # Process balances
+            accounts_in_page = data.get("balances", [])
+
+            # Stream raw data to CSV if streamer is configured
+            if self.streamer:
+                self.streamer.add_chunk(accounts_in_page)
+
+            for balance_entry in accounts_in_page:
+                account_id = balance_entry.get("account")
+                raw_balance = balance_entry.get("balance", 0)
+                
+                try:
+                    # Adjust for token decimals
+                    decimals = self.decimals_config.get(token_symbol)
+                    if decimals is None:
+                        logger.warning(f"No decimal info for {token_symbol}, assuming 0. Balance may be incorrect.")
+                        decimals = 0
                     
-                if not data:
-                    print(f"  ❌ Failed to fetch data, stopping")
+                    balance = Decimal(str(raw_balance or "0")) / (Decimal(10) ** decimals)
+                except TypeError:
+                    logger.critical(f"TYPE ERROR during token balance division! raw_balance: {raw_balance} (type: {type(raw_balance)}), decimals: {decimals} (type: {type(decimals)})")
+                    raise
+                except (InvalidOperation, TypeError):
+                    print(f"  ⚠️  Invalid balance {raw_balance} for {account_id}")
+                    continue
+                
+                holder = {
+                    "account_id": account_id,
+                    "balance": balance,
+                }
+                
+                holders.append(holder)
+
+                if max_accounts and len(holders) >= max_accounts:
                     break
+
+            self.accounts_since_last_report += len(accounts_in_page)
+            
+            # Progress Reporting
+            if self.request_count > 0 and self.request_count % PROGRESS_REPORT_INTERVAL == 0 and holders:
+                current_time = time.time()
+                elapsed_time = current_time - self.last_report_time
+                try:
+                    rate = self.accounts_since_last_report / elapsed_time if elapsed_time > 0 else 0
+                except TypeError:
+                    logger.critical(f"TYPE ERROR during token rate division! accounts: {self.accounts_since_last_report} (type: {type(self.accounts_since_last_report)}), time: {elapsed_time} (type: {type(elapsed_time)})")
+                    raise
                 
-                # Process balances
-                for balance_entry in data.get("balances", []):
-                    account_id = balance_entry.get("account")
-                    raw_balance = balance_entry.get("balance", 0)
-                    
-                    try:
-                        balance = float(Decimal(raw_balance))
-                    except (InvalidOperation, TypeError):
-                        print(f"  ⚠️  Invalid balance {raw_balance} for {account_id}")
-                        continue
-                    
-                    holder = {
-                        "account_id": account_id,
-                        "balance": balance,
-                        f"balance_{token_symbol.lower()}": balance
-                    }
-                    
-                    holders.append(holder)
-                    pbar.update(1)
-                    
-                    if max_accounts and len(holders) >= max_accounts:
-                        print(f"  ✅ Reached {max_accounts:,} accounts limit")
-                        break
+                # Flush streamed data
+                if self.streamer:
+                    self.streamed_count += self.streamer.flush()
                 
-                # Get next page
-                next_link = data.get("links", {}).get("next")
-                if next_link:
-                    url = f"https://mainnet-public.mirrornode.hedera.com{next_link}"
-                    params = None
-                else:
-                    print(f"  ✅ No more pages. Total: {len(holders):,} accounts")
-                    break
+                last = holders[-1]
+                # Convert Decimal to float for stable printing, without affecting stored data precision
+                balance_for_display = float(last['balance'])
+                progress_line = (
+                    f"  -> Fetched {len(holders):,} accounts ({rate:,.0f} accts/s) | "
+                    f"Streamed: {self.streamed_count:,} | Last Balance: {balance_for_display:,.4f} {token_symbol}"
+                )
+                print(f"{progress_line.ljust(100)}", end='\r')
+
+                self.last_report_time = current_time
+                self.accounts_since_last_report = 0
+
+            if max_accounts and len(holders) >= max_accounts:
+                print(f"\n  ✅ Reached {max_accounts:,} accounts limit")
+                break
+            
+            # Get next page
+            next_link = data.get("links", {}).get("next")
+            if next_link:
+                url = f"https://mainnet-public.mirrornode.hedera.com{next_link}"
+                params = None
+            else:
+                # Final progress update before finishing
+                rate = len(holders) / (time.time() - self.last_report_time) if time.time() - self.last_report_time > 0 else 0
+                
+                if self.streamer:
+                    self.streamed_count += self.streamer.flush()
+                
+                progress_line = (
+                    f"  -> Fetched {len(holders):,} accounts ({rate:,.0f} accts/s)... Done. | "
+                    f"Total streamed: {self.streamed_count:,}"
+                )
+                print(f"{progress_line.ljust(100)}")
+                print(f"  ✅ No more pages. Total: {len(holders):,} accounts")
+                break
+                
+        print() # Final newline to ensure clean output
         
         # Apply USD filtering if requested and pricing service is available
         if min_usd_value and self.filter_service:
@@ -302,7 +419,7 @@ class HederaTokenFetcher:
             return [], []
         
         # Sort by balance descending
-        balance_key = "balance_hbar" if token_symbol == "HBAR" else "balance"
+        balance_key = "balance" # Universal balance key now
         try:
             sorted_holders = sorted(holders, key=lambda x: x[balance_key], reverse=True)
         except (KeyError, TypeError) as e:
@@ -337,7 +454,11 @@ class HederaTokenFetcher:
             percentile_decimal = Decimal(percentile)
             
             # Calculate exact position: (percentile / 100) * total_accounts - 1
-            exact_position = (percentile_decimal / Decimal(100)) * total_accounts_decimal - Decimal(1)
+            try:
+                exact_position = (percentile_decimal / Decimal(100)) * total_accounts_decimal - Decimal(1)
+            except TypeError:
+                logger.critical(f"TYPE ERROR during percentile division! percentile_decimal: {percentile_decimal} (type: {type(percentile_decimal)}), total_accounts_decimal: {total_accounts_decimal} (type: {type(total_accounts_decimal)})")
+                raise
             
             # Round down to get integer position, ensuring bounds
             position = int(exact_position.quantize(Decimal(1), rounding=ROUND_DOWN))
@@ -370,175 +491,207 @@ class HederaTokenFetcher:
         return top_holders, percentile_holders
     
     def refresh_token_data(self, token_symbol: str, token_id: str, max_accounts: Optional[int] = None,
-                          min_usd_value: Optional[Decimal] = None) -> bool:
+                          min_usd_value: Optional[Decimal] = None, stream_to_csv: bool = False) -> bool:
         """Complete refresh process for a token with optional USD filtering."""
-        db_session = get_session()
         refresh_batch_id = str(uuid.uuid4())
         start_time = datetime.utcnow()
-        metadata = None
+        self.streamer = None # Ensure streamer is reset
         
         try:
-            print(f"\n🚀 Starting refresh for {token_symbol} (ID: {token_id})")
-            
-            # Check for existing refresh in progress (Race Condition Protection)
-            existing_metadata = db_session.query(TokenMetadata).filter_by(token_symbol=token_symbol).first()
-            if existing_metadata and existing_metadata.refresh_in_progress:
-                raise ValueError(f"Refresh already in progress for {token_symbol}")
-            
-            # Update metadata - refresh started
-            metadata = existing_metadata
-            if not metadata:
-                metadata = TokenMetadata(
-                    token_symbol=token_symbol,
-                    token_id=token_id
-                )
-                db_session.add(metadata)
-            
-            metadata.last_refresh_started = start_time
-            metadata.refresh_in_progress = True
-            metadata.error_message = None
-            db_session.commit()
-            
-            # Update price information
-            try:
-                price_usd, tokens_per_usd = self._update_token_price_info(db_session, token_symbol, token_id)
-            except (requests.RequestException, ValueError, KeyError) as e:
-                logger.warning(f"Price update failed for {token_symbol}: {e}")
-                price_usd, tokens_per_usd = None, None
-            
-            self._log_operation(db_session, token_symbol, "fetch_started", 
-                              f"Starting data refresh with USD filtering", refresh_batch_id,
-                              min_usd_filter=min_usd_value, price_usd_used=price_usd)
-            
-            # Fetch holders
-            try:
-                if token_symbol == "HBAR":
-                    holders = self.fetch_hbar_holders(max_accounts, min_usd_value)
-                else:
-                    holders = self.fetch_token_holders(token_id, token_symbol, max_accounts, min_usd_value)
-            except (requests.RequestException, ConnectionError, TimeoutError) as e:
-                raise RuntimeError(f"Failed to fetch holder data: {e}")
-            
-            if not holders:
-                raise ValueError("No holders data fetched")
-            
-            # Calculate statistics
-            try:
-                top_holders, percentile_holders = self.calculate_top_holders_and_percentiles(holders, token_symbol)
-            except (ValueError, TypeError) as e:
-                raise RuntimeError(f"Failed to calculate statistics: {e}")
-            
-            # Prepare all new data before modifying database (Transaction Safety)
-            balance_key = "balance_hbar" if token_symbol == "HBAR" else "balance"
-            new_holdings = []
-            
-            # Prepare top holders data
-            for holder_data in top_holders:
-                holding = TokenHolding(
-                    token_symbol=token_symbol,
-                    account_id=holder_data["account_id"],
-                    balance=holder_data[balance_key],
-                    balance_rank=holder_data["rank"],
-                    percentile_rank=None,
-                    is_top_holder=True,
-                    is_percentile_marker=False,
-                    usd_value=Decimal(str(holder_data.get("usd_value", 0))) if holder_data.get("usd_value") else None,
-                    price_usd_at_refresh=price_usd,
-                    refresh_batch_id=refresh_batch_id
-                )
-                new_holdings.append(holding)
-            
-            # Prepare percentile markers data
-            for holder_data in percentile_holders:
-                holding = TokenHolding(
-                    token_symbol=token_symbol,
-                    account_id=holder_data["account_id"],
-                    balance=holder_data[balance_key],
-                    balance_rank=holder_data["rank"],
-                    percentile_rank=float(holder_data["percentile"]),
-                    is_top_holder=False,
-                    is_percentile_marker=True,
-                    usd_value=Decimal(str(holder_data.get("usd_value", 0))) if holder_data.get("usd_value") else None,
-                    price_usd_at_refresh=price_usd,
-                    refresh_batch_id=refresh_batch_id
-                )
-                new_holdings.append(holding)
-            
-            # ATOMIC OPERATION: Clear old data and insert new data
-            try:
-                # Clear old data for this token
-                deleted_count = db_session.query(TokenHolding).filter_by(token_symbol=token_symbol).delete()
-                logger.info(f"Deleted {deleted_count} old holdings for {token_symbol}")
-                
-                # Store all new data
-                for holding in new_holdings:
-                    db_session.add(holding)
-                
-                # Update metadata - success
-                end_time = datetime.utcnow()
-                processing_time = (end_time - start_time).total_seconds()
-                
-                metadata.last_refresh_completed = end_time
-                metadata.refresh_in_progress = False
-                metadata.last_refresh_success = True
-                metadata.total_accounts_fetched = len(holders)
-                
-                # Commit all changes atomically
-                db_session.commit()
-                
-                self._log_operation(db_session, token_symbol, "fetch_completed",
-                                  f"Successfully refreshed {len(holders):,} accounts",
-                                  refresh_batch_id, self.request_count, len(holders), processing_time,
-                                  min_usd_value, price_usd)
-                
-            except Exception as e:
-                # Rollback if database operations fail
-                db_session.rollback()
-                raise RuntimeError(f"Database operation failed: {e}")
-            
-            # Enhanced summary with USD info
-            print(f"✅ {token_symbol} refresh completed in {processing_time:.1f}s")
-            print(f"   📊 {len(holders):,} total accounts | {len(top_holders)} top holders | {len(percentile_holders)} percentiles")
-            if price_usd:
-                print(f"   💰 Current price: ${price_usd} USD | {tokens_per_usd:.2f} tokens per USD")
-            if min_usd_value:
-                print(f"   🔍 USD filter applied: min=${min_usd_value}")
-            
-            return True
-            
-        except (ValueError, RuntimeError) as e:
-            # Handle expected errors
-            if metadata:
+            with get_db_session() as db_session:
+                metadata = None
                 try:
-                    metadata.refresh_in_progress = False
-                    metadata.last_refresh_success = False
-                    metadata.error_message = str(e)
+                    print(f"\n🚀 Starting refresh for {token_symbol} (ID: {token_id})")
+                    
+                    # Check for existing refresh in progress (Race Condition Protection)
+                    existing_metadata = db_session.query(TokenMetadata).filter_by(token_symbol=token_symbol).first()
+                    if existing_metadata and existing_metadata.refresh_in_progress:
+                        raise ValueError(f"Refresh already in progress for {token_symbol}")
+                    
+                    # Setup CSV streamer if requested
+                    if stream_to_csv:
+                        temp_dir = ensure_temp_dir()
+                        timestamp = start_time.strftime("%Y%m%dT%H%M%SZ")
+                        filename = f"{token_symbol.lower()}_raw_api_data_{timestamp}.csv"
+                        filepath = temp_dir / filename
+                        
+                        # Define headers based on token type
+                        if token_symbol == "HBAR":
+                            fieldnames = ['account', 'balance', 'created_timestamp', 'expiry_timestamp', 'auto_renew_period', 'memo', 'alias']
+                        else:
+                            fieldnames = ['account', 'balance']
+                            
+                        self.streamer = ApiCsvStreamer(filepath, fieldnames)
+                        print(f"  -> 📄 Streaming raw API data to: {filepath.name}")
+
+                    # Update metadata - refresh started
+                    metadata = existing_metadata
+                    if not metadata:
+                        metadata = TokenMetadata(
+                            token_symbol=token_symbol,
+                            token_id=token_id
+                        )
+                        db_session.add(metadata)
+                    
+                    # Get decimals from config and store in metadata
+                    token_decimals = self.decimals_config.get(token_symbol)
+                    if token_decimals is None:
+                        raise ValueError(f"Decimal information for {token_symbol} not found in config.")
+                    
+                    metadata.decimals = token_decimals
+                    metadata.last_refresh_started = start_time
+                    metadata.refresh_in_progress = True
+                    metadata.error_message = None
                     db_session.commit()
-                except Exception:
-                    db_session.rollback()
-            
-            self._log_operation(db_session, token_symbol, "error", str(e), refresh_batch_id)
-            
-            print(f"❌ {token_symbol} refresh failed: {e}")
-            return False
-            
+                    
+                    # Update price information
+                    try:
+                        price_usd, tokens_per_usd = self._update_token_price_info(db_session, token_symbol, token_id)
+                    except (requests.RequestException, ValueError, KeyError) as e:
+                        logger.warning(f"Price update failed for {token_symbol}: {e}")
+                        price_usd, tokens_per_usd = None, None
+                    
+                    self._log_operation(db_session, token_symbol, "fetch_started", 
+                                      f"Starting data refresh with USD filtering", refresh_batch_id,
+                                      min_usd_filter=min_usd_value, price_usd_used=price_usd)
+                    
+                    # Fetch holders
+                    try:
+                        if token_symbol == "HBAR":
+                            holders = self.fetch_hbar_holders(max_accounts, min_usd_value)
+                        else:
+                            holders = self.fetch_token_holders(token_id, token_symbol, max_accounts, min_usd_value)
+                    except (requests.RequestException, ConnectionError, TimeoutError) as e:
+                        raise RuntimeError(f"Failed to fetch holder data: {e}")
+                    
+                    if not holders:
+                        raise ValueError("No holders data fetched")
+                    
+                    # Calculate statistics
+                    try:
+                        top_holders, percentile_holders = self.calculate_top_holders_and_percentiles(holders, token_symbol)
+                    except (ValueError, TypeError) as e:
+                        raise RuntimeError(f"Failed to calculate statistics: {e}")
+                    
+                    # Prepare all new data before modifying database (Transaction Safety)
+                    balance_key = "balance" # Universal balance key
+                    new_holdings = []
+                    
+                    # Prepare top holders data
+                    for holder_data in top_holders:
+                        holding = TokenHolding(
+                            token_symbol=token_symbol,
+                            account_id=holder_data["account_id"],
+                            balance=holder_data[balance_key],
+                            balance_rank=holder_data["rank"],
+                            percentile_rank=None,
+                            is_top_holder=True,
+                            is_percentile_marker=False,
+                            usd_value=Decimal(str(holder_data.get("usd_value", "0"))),
+                            price_usd_at_refresh=price_usd or Decimal("0"),
+                            refresh_batch_id=refresh_batch_id
+                        )
+                        new_holdings.append(holding)
+                    
+                    # Prepare percentile markers data
+                    for holder_data in percentile_holders:
+                        holding = TokenHolding(
+                            token_symbol=token_symbol,
+                            account_id=holder_data["account_id"],
+                            balance=holder_data[balance_key],
+                            balance_rank=holder_data["rank"],
+                            percentile_rank=float(holder_data["percentile"]),
+                            is_top_holder=False,
+                            is_percentile_marker=True,
+                            usd_value=Decimal(str(holder_data.get("usd_value", "0"))),
+                            price_usd_at_refresh=price_usd or Decimal("0"),
+                            refresh_batch_id=refresh_batch_id
+                        )
+                        new_holdings.append(holding)
+                    
+                    # ATOMIC OPERATION: Clear old data and insert new data
+                    try:
+                        # Clear old data for this token
+                        deleted_count = db_session.query(TokenHolding).filter_by(token_symbol=token_symbol).delete()
+                        logger.info(f"Deleted {deleted_count} old holdings for {token_symbol}")
+                        
+                        # Store all new data
+                        db_session.bulk_save_objects(new_holdings)
+                        
+                        # Update metadata - success
+                        end_time = datetime.utcnow()
+                        processing_time = (end_time - start_time).total_seconds()
+                        
+                        metadata.last_refresh_completed = end_time
+                        metadata.refresh_in_progress = False
+                        metadata.last_refresh_success = True
+                        metadata.total_accounts_fetched = len(holders)
+                        
+                        # Commit all changes atomically
+                        db_session.commit()
+                        
+                        self._log_operation(db_session, token_symbol, "fetch_completed",
+                                          f"Successfully refreshed {len(holders):,} accounts",
+                                          refresh_batch_id, self.request_count, len(holders), processing_time,
+                                          min_usd_value, price_usd)
+                        
+                    except Exception as e:
+                        # Rollback if database operations fail
+                        db_session.rollback()
+                        raise RuntimeError(f"Database operation failed: {e}")
+                    
+                    # Enhanced summary with USD info
+                    print(f"✅ {token_symbol} refresh completed in {processing_time:.1f}s")
+                    print(f"   📊 {len(holders):,} total accounts | {len(top_holders)} top holders | {len(percentile_holders)} percentiles")
+                    if self.streamer:
+                        print(f"   📄 Total raw records streamed to CSV: {self.streamed_count:,}")
+                    if price_usd:
+                        print(f"   💰 Current price: ${price_usd} USD | {tokens_per_usd:.2f} tokens per USD")
+                    if min_usd_value:
+                        print(f"   🔍 USD filter applied: min=${min_usd_value}")
+                    
+                    return True
+                    
+                except (ValueError, RuntimeError) as e:
+                    # Handle expected errors
+                    if metadata:
+                        try:
+                            metadata.refresh_in_progress = False
+                            metadata.last_refresh_success = False
+                            metadata.error_message = str(e)
+                            db_session.commit()
+                        except Exception:
+                            db_session.rollback()
+                    
+                    self._log_operation(db_session, token_symbol, "error", str(e), refresh_batch_id)
+                    
+                    print(f"❌ {token_symbol} refresh failed: {e}")
+                    return False
+                    
+                except Exception as e:
+                    # Handle unexpected errors
+                    logger.error(f"Unexpected error in refresh_token_data for {token_symbol}: {e}")
+                    if metadata:
+                        try:
+                            metadata.refresh_in_progress = False
+                            metadata.last_refresh_success = False
+                            metadata.error_message = f"Unexpected error: {str(e)}"
+                            db_session.commit()
+                        except Exception:
+                            db_session.rollback()
+                    
+                    self._log_operation(db_session, token_symbol, "error", f"Unexpected error: {str(e)}", refresh_batch_id)
+                    
+                    print(f"❌ {token_symbol} refresh failed with unexpected error: {e}")
+                    return False
+                    
+                finally:
+                    if self.streamer:
+                        self.streamer.close()
+                    self.request_count = 0
+                    self.streamer = None
         except Exception as e:
-            # Handle unexpected errors
-            logger.error(f"Unexpected error in refresh_token_data for {token_symbol}: {e}")
-            if metadata:
-                try:
-                    metadata.refresh_in_progress = False
-                    metadata.last_refresh_success = False
-                    metadata.error_message = f"Unexpected error: {str(e)}"
-                    db_session.commit()
-                except Exception:
-                    db_session.rollback()
-            
-            self._log_operation(db_session, token_symbol, "error", f"Unexpected error: {str(e)}", refresh_batch_id)
-            
-            print(f"❌ {token_symbol} refresh failed with unexpected error: {e}")
-            return False
-            
-        finally:
-            db_session.close()
-            self.request_count = 0  # Reset for next token 
+            logger.critical("--- UNHANDLED EXCEPTION IN REFRESH_TOKEN_DATA ---")
+            logger.critical(traceback.format_exc())
+            logger.critical("-------------------------------------------------")
+            raise e 

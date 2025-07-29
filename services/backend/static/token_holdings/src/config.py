@@ -2,82 +2,106 @@
 
 import os
 import json
-from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 
-# Base paths
-PROJECT_ROOT = Path(__file__).parent.parent
-TOKENS_CONFIG_PATH = PROJECT_ROOT / "../../tokens_enabled.json"
-APP_SETTINGS_PATH = PROJECT_ROOT / "../../../frontend/appSettings.json"
-TEMP_DATA_DIR = PROJECT_ROOT / "temp_data"
+# --- Path Configuration ---
+# Build paths relative to the project root to ensure consistency
+# __file__ -> src/config.py
+# os.path.dirname(__file__) -> src/
+# os.path.dirname(os.path.dirname(__file__)) -> project root
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 
-# API Configuration
+DB_PATH = os.path.join(PROJECT_ROOT, 'token_holdings.db')
+TEMP_DATA_PATH = os.path.join(PROJECT_ROOT, 'temp_data')
+
+# Path for the externally managed tokens_enabled.json file
+# This should resolve to ../../tokens_enabled.json from the project root
+TOKENS_CONFIG_PATH = os.path.abspath(os.path.join(PROJECT_ROOT, '..', '..', 'tokens_enabled.json'))
+
+# Path for the dynamically populated token_decimals.json file
+DECIMALS_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'src', 'token_decimals.json')
+
+# Path for the external app settings with API keys
+APP_SETTINGS_PATH = os.path.join(PROJECT_ROOT, '..', '..', '..', 'frontend', 'appSettings.json')
+
+# --- API & Rate Limiting Configuration ---
+REQUESTS_PER_SECOND = 25
+RATE_LIMIT_SLEEP = 1 / REQUESTS_PER_SECOND  # 40ms sleep between requests
+MAX_PAGE_SIZE = 100
+REQUEST_TIMEOUT = 30  # seconds
+MAX_RETRIES = 5
+BACKOFF_FACTOR = 2
+
+# --- Hedera Mirror Node Endpoints ---
 HEDERA_BASE_URL = "https://mainnet-public.mirrornode.hedera.com/api/v1"
 HEDERA_ACCOUNTS_ENDPOINT = f"{HEDERA_BASE_URL}/accounts"
 HEDERA_TOKENS_ENDPOINT = f"{HEDERA_BASE_URL}/tokens"
 
-# Rate limiting (be conservative to avoid 429s)
-REQUESTS_PER_SECOND = 25  # Hedera allows 50, but we'll be safe
-RATE_LIMIT_SLEEP = 1.0 / REQUESTS_PER_SECOND
-
-# Request configuration
-MAX_PAGE_SIZE = 100
-REQUEST_TIMEOUT = 30
-MAX_RETRIES = 3
-BACKOFF_FACTOR = 2
-
-# Progress reporting
-PROGRESS_REPORT_INTERVAL = 10  # Report every N requests
-
-def load_tokens_config() -> Dict[str, str]:
-    """Load enabled tokens from configuration file."""
-    try:
-        with open(TOKENS_CONFIG_PATH, 'r') as f:
-            config = json.load(f)
-            return config.get('tokens_enabled', {})
-    except FileNotFoundError:
-        print(f"Warning: Tokens config file not found at {TOKENS_CONFIG_PATH}")
-        return {}
-    except json.JSONDecodeError as e:
-        print(f"Error parsing tokens config: {e}")
-        return {}
-
-def load_app_settings() -> Dict[str, str]:
-    """Load application settings including API keys."""
-    try:
-        with open(APP_SETTINGS_PATH, 'r') as f:
-            settings = json.load(f)
-            return settings
-    except FileNotFoundError:
-        print(f"Warning: App settings file not found at {APP_SETTINGS_PATH}")
-        return {}
-    except json.JSONDecodeError as e:
-        print(f"Error parsing app settings: {e}")
-        return {}
-
-def get_saucerswap_api_key() -> Optional[str]:
-    """Get SaucerSwap API key from app settings."""
-    settings = load_app_settings()
-    api_key = settings.get('SAUCER_SWAP_API_KEY')
-    if not api_key or api_key == "___":
-        print("Warning: SAUCER_SWAP_API_KEY not found or not set in app settings")
-        return None
-    return api_key
-
-def ensure_temp_dir():
-    """Ensure temp data directory exists."""
-    TEMP_DATA_DIR.mkdir(exist_ok=True)
-    return TEMP_DATA_DIR
-
-# Headers for API requests
-DEFAULT_HEADERS = {
-    "Accept": "application/json",
-    "User-Agent": "TokenHoldingsTracker/1.0"
+# --- Balance Thresholds ---
+# Minimum balance to be included in the results
+MIN_BALANCE_THRESHOLDS = {
+    "HBAR": 1_000_000_000,  # 10 HBAR
+    "SAUCE": 1,
+    "KARATE": 1
 }
 
-# Balance thresholds (in tinybars for HBAR, in smallest unit for tokens)
-MIN_BALANCE_THRESHOLDS = {
-    "HBAR": 100000000,  # 1 HBAR in tinybars
-    "SAUCE": 1000000,   # 1 SAUCE (adjust based on decimals)
-    "KARATE": 1000000,  # 1 KARATE (adjust based on decimals)
-} 
+# --- Progress Reporting ---
+PROGRESS_REPORT_INTERVAL = 20  # Print progress every 20 API requests
+
+# --- Default Headers ---
+DEFAULT_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "TokenHoldingsTracker/1.0.0"
+}
+
+# --- Configuration Loading Functions ---
+
+def load_config_from_json(path: str) -> Dict:
+    """Load configuration from a JSON file with robust error handling."""
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"⚠️  Warning: Could not read or parse config file at {path}: {e}")
+        return {}
+
+def save_config_to_json(path: str, data: Dict) -> None:
+    """Save configuration data to a JSON file."""
+    try:
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=4)
+    except IOError as e:
+        print(f"⚠️  Warning: Could not write to config file at {path}: {e}")
+
+def load_tokens_config() -> Dict[str, str]:
+    """Load the enabled tokens configuration."""
+    config = load_config_from_json(TOKENS_CONFIG_PATH)
+    return config.get("tokens_enabled", {})
+
+def load_decimals_config() -> Dict[str, int]:
+    """Load the token decimals configuration."""
+    return load_config_from_json(DECIMALS_CONFIG_PATH)
+
+def save_decimals_config(decimals_data: Dict[str, int]) -> None:
+    """Save the token decimals configuration."""
+    save_config_to_json(DECIMALS_CONFIG_PATH, decimals_data)
+
+def load_app_settings() -> Dict:
+    """Load the frontend app settings."""
+    return load_config_from_json(APP_SETTINGS_PATH)
+
+def get_saucerswap_api_key() -> Optional[str]:
+    """Extract the SaucerSwap API key from app settings."""
+    settings = load_app_settings()
+    return settings.get("SAUCER_SWAP_API_KEY")
+
+# We return the Path to enable easy path arithmetic with the `/` operator (Path.__truediv__).
+from pathlib import Path
+
+def ensure_temp_dir() -> Path:
+    """Ensure the temp_data directory exists and return it as a Path object."""
+    path_obj = Path(TEMP_DATA_PATH)
+    path_obj.mkdir(parents=True, exist_ok=True)
+    return path_obj 
