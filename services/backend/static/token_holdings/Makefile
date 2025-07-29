@@ -1,4 +1,4 @@
-.PHONY: help setup install install-dev init refresh export status top percentiles cleanup clean test test-unit test-integration test-coverage system-test format lint type-check build-production
+.PHONY: help install test production interactive export
 
 # Default target
 help:
@@ -6,201 +6,63 @@ help:
 	@echo "==============================="
 	@echo ""
 	@echo "Available commands:"
-	@echo "  make setup       - Setup virtual environment and install dependencies"
-	@echo "  make install     - Alias for setup"
-	@echo "  make install-dev - Install with development dependencies"
-	@echo "  make init        - Initialize database and directories"
-	@echo "  make refresh     - Refresh all token data"
-	@echo "  make refresh-hbar - Refresh only HBAR data"
-	@echo "  make refresh-sauce - Refresh only SAUCE data"
-	@echo "  make refresh-karate - Refresh only KARATE data"
-	@echo "  make refresh-interactive - Interactive mode (prompts for old data)"
-	@echo "  make refresh-interactive-quick - Interactive mode with limited accounts"
-	@echo "  make build-production - Build production database (unlimited accounts, 1 USD min)"
-	@echo "  make export      - Export all token data to CSV"
-	@echo "  make export-summary - Export summary of all tokens"
-	@echo "  make status      - Show status of all tokens"
-	@echo "  make top-holders - Show top holders for all tokens"
-	@echo "  make percentiles - Show percentiles for all tokens"
-	@echo "  make cleanup     - Clean up old data"
-	@echo "  make clean       - Remove database and temp files"
-	@echo "  make test        - Run pytest tests"
-	@echo "  make test-unit   - Run unit tests only"
-	@echo "  make test-integration - Run integration tests"
-	@echo "  make system-test - Run basic system test"
+	@echo "  make install     - Setup environment and install dependencies"
+	@echo "  make test        - Run all tests (unit + integration)"
+	@echo "  make production  - Build production database (unlimited accounts, \$$1 USD min)"
+	@echo "  make interactive - Interactive refresh mode (prompts for old data)"
+	@echo "  make export      - Export all token data to CSV files"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make install && make production  # Setup and build production DB"
+	@echo "  make interactive                 # Smart refresh with prompts"
+	@echo "  make export                      # Export current data to CSV"
 
-# Setup and install dependencies
-setup:
-	@echo "🔧 Setting up virtual environment and Poetry..."
-	python -m venv .venv
+# Install and setup
+install:
+	@echo "🔧 Setting up Token Holdings System..."
 	@echo "📦 Installing Poetry dependencies..."
-	poetry install
-	@echo "✅ Setup completed!"
-
-install: setup
-
-install-dev:
-	@echo "📦 Installing Poetry dependencies with dev tools..."
 	poetry install --with dev
-	@echo "✅ Development dependencies installed!"
-
-# Initialize system
-init:
-	@echo "🔧 Initializing Token Holdings System..."
+	@echo "🔧 Initializing database..."
 	poetry run python -m src.cli init
-	@echo "✅ System initialized!"
+	@echo "📊 Checking system status..."
+	poetry run python -m src.cli status
+	@echo "✅ Installation completed!"
 
-# Refresh commands
-refresh:
-	@echo "🚀 Refreshing all token data..."
-	poetry run python -m src.cli refresh --export-csv
-
-refresh-hbar:
-	@echo "🚀 Refreshing HBAR data..."
-	poetry run python -m src.cli refresh --token HBAR --export-csv
-
-refresh-sauce:
-	@echo "🚀 Refreshing SAUCE data..."
-	poetry run python -m src.cli refresh --token SAUCE --export-csv
-
-refresh-karate:
-	@echo "🚀 Refreshing KARATE data..."
-	poetry run python -m src.cli refresh --token KARATE --export-csv
-
-refresh-quick:
-	@echo "🚀 Quick refresh (limited accounts)..."
-	poetry run python -m src.cli refresh --max-accounts 10000 --export-csv
-
-refresh-interactive:
-	@echo "🤔 Interactive refresh mode..."
-	poetry run python -m src.cli refresh --interactive --export-csv
-
-refresh-interactive-quick:
-	@echo "🤔 Interactive refresh mode (limited accounts)..."
-	poetry run python -m src.cli refresh --interactive --max-accounts 10000 --export-csv
+# Run all tests
+test:
+	@echo "🧪 Running all tests..."
+	poetry run pytest --cov=src --cov-report=term-missing
+	@echo "✅ All tests completed!"
 
 # Production database build
-build-production:
+production:
 	@echo "🏗️  Building production database..."
-	@echo "  - Unlimited accounts per token"
-	@echo "  - Minimum USD filter: $$1.00"
-	@echo "  - All enabled tokens"
+	@echo "  📊 Unlimited accounts per token"
+	@echo "  💰 Minimum USD filter: \$$1.00"  
+	@echo "  🪙 All enabled tokens (HBAR, SAUCE, KARATE)"
 	@echo ""
 	poetry run python -m src.cli refresh --min-usd 1 --export-csv
+	@echo ""
+	@echo "📊 Production database status:"
+	poetry run python -m src.cli status
 	@echo "✅ Production database build completed!"
 
-# Export commands
+# Interactive mode
+interactive:
+	@echo "🤔 Starting interactive refresh mode..."
+	@echo "  📅 Checks data age and prompts for updates"
+	@echo "  🔄 Smart refresh for tokens older than 24 hours"
+	@echo "  📋 Batch processing with confirmation"
+	@echo ""
+	poetry run python -m src.cli refresh --interactive --export-csv
+	@echo "✅ Interactive refresh completed!"
+
+# Export data
 export:
 	@echo "📄 Exporting all token data to CSV..."
 	poetry run python -m src.cli export
-
-export-summary:
 	@echo "📊 Exporting summary of all tokens..."
 	poetry run python -m src.cli export --summary
-
-export-top-only:
-	@echo "📄 Exporting top holders only..."
-	poetry run python -m src.cli export --top-only
-
-# Status and query commands
-status:
-	@echo "📊 Checking token status..."
-	poetry run python -m src.cli status
-
-top-holders:
-	@echo "🏆 Showing top holders..."
-	@echo "HBAR Top 10:"
-	poetry run python -m src.cli top --token HBAR --limit 10 || echo "No HBAR data"
-	@echo ""
-	@echo "SAUCE Top 10:"
-	poetry run python -m src.cli top --token SAUCE --limit 10 || echo "No SAUCE data"
-	@echo ""
-	@echo "KARATE Top 10:"
-	poetry run python -m src.cli top --token KARATE --limit 10 || echo "No KARATE data"
-
-percentiles:
-	@echo "📈 Showing percentiles..."
-	@echo "HBAR Percentiles:"
-	poetry run python -m src.cli percentiles --token HBAR --percentiles "99,95,90,75,50,25,10,5,1" || echo "No HBAR data"
-	@echo ""
-	@echo "SAUCE Percentiles:"
-	poetry run python -m src.cli percentiles --token SAUCE --percentiles "99,95,90,75,50,25,10,5,1" || echo "No SAUCE data"
-	@echo ""
-	@echo "KARATE Percentiles:"
-	poetry run python -m src.cli percentiles --token KARATE --percentiles "99,95,90,75,50,25,10,5,1" || echo "No KARATE data"
-
-# Maintenance commands
-cleanup:
-	@echo "🗑️  Cleaning up old data..."
-	poetry run python -m src.cli cleanup --keep 3
-
-clean:
-	@echo "🧹 Removing database, temporary files, and virtual environment..."
-	rm -f token_holdings.db
-	rm -rf temp_data/
-	rm -rf .venv/
-	@echo "✅ Clean complete!"
-
-# System test command  
-system-test:
-	@echo "🧪 Running basic system test..."
-	@echo "1. Initializing system..."
-	poetry run python -m src.cli init
-	@echo "2. Checking status..."
-	poetry run python -m src.cli status
-	@echo "3. Running refresh for HBAR (limited accounts)..."
-	poetry run python -m src.cli refresh --token HBAR --max-accounts 1000 --export-csv
-	@echo "4. Showing results..."
-	poetry run python -m src.cli status
-	poetry run python -m src.cli top --token HBAR --limit 5
-	@echo "✅ System test completed!"
-
-# Development helpers
-logs:
-	@echo "📋 Recent refresh logs:"
-	sqlite3 token_holdings.db "SELECT token_symbol, operation, message, created_at FROM refresh_logs ORDER BY created_at DESC LIMIT 20;"
-
-db-info:
-	@echo "💾 Database information:"
-	@echo "Database size:"
-	ls -lh token_holdings.db 2>/dev/null || echo "Database not found"
-	@echo ""
-	@echo "Table counts:"
-	sqlite3 token_holdings.db "SELECT 'token_metadata', COUNT(*) FROM token_metadata UNION ALL SELECT 'token_holdings', COUNT(*) FROM token_holdings UNION ALL SELECT 'refresh_logs', COUNT(*) FROM refresh_logs;" 2>/dev/null || echo "Database not initialized"
-
-temp-files:
-	@echo "📁 Temporary files:"
-	ls -la temp_data/ 2>/dev/null || echo "No temp directory found"
-
-# Development tools
-format:
-	@echo "🎨 Formatting code with Black..."
-	poetry run black src/
-
-lint:
-	@echo "🔍 Linting code with Flake8..."
-	poetry run flake8 src/
-
-type-check:
-	@echo "🔍 Type checking with MyPy..."
-	poetry run mypy src/
-
-test:
-	@echo "🧪 Running tests..."
-	poetry run pytest
-
-test-unit:
-	@echo "🧪 Running unit tests only..."
-	poetry run pytest -m "not integration"
-
-test-integration:
-	@echo "🧪 Running integration tests..."
-	poetry run pytest -m integration
-
-test-coverage:
-	@echo "🧪 Running tests with coverage..."
-	poetry run pytest --cov=src --cov-report=html --cov-report=term
-
-shell:
-	@echo "🐚 Starting Poetry shell..."
-	poetry shell 
+	@echo "📁 Checking exported files..."
+	@ls -la temp_data/ 2>/dev/null || echo "No temp directory found"
+	@echo "✅ Export completed!" 

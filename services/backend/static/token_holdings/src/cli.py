@@ -2,13 +2,30 @@
 
 import sys
 import click
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
+from decimal import Decimal
 from tabulate import tabulate
 
 from .config import load_tokens_config, ensure_temp_dir
-from .database import init_database
+from .database import init_database, get_session
 from .fetchers import HederaTokenFetcher
 from .utils import export_to_csv, export_all_tokens_summary, get_token_summary, get_top_holders, get_percentiles, cleanup_old_data, get_tokens_needing_refresh
+from .services import validate_tokens_before_operation, TokenValidationError
+
+# Configure logging with critical level visibility
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(sys.stderr)  # Ensure critical messages go to stderr
+    ]
+)
+
+# Set critical logger to maximum visibility
+critical_logger = logging.getLogger('src.services.token_validator')
+critical_logger.setLevel(logging.CRITICAL)
 
 
 def handle_interactive_refresh(tokens_config, max_accounts, export_csv):
@@ -109,9 +126,19 @@ def cli():
 def init():
     """Initialize the database and create tables."""
     click.echo("🔧 Initializing database...")
-    init_database()
-    ensure_temp_dir()
-    click.echo("✅ Database initialized successfully!")
+    
+    try:
+        init_database()
+        # Validate tokens configuration during initialization
+        validate_tokens_before_operation("database initialization")
+        click.echo("✅ Database initialized successfully!")
+    except TokenValidationError as e:
+        click.echo(f"❌ Database initialization failed due to token validation errors.")
+        click.echo(f"Fix the token configuration and try again.")
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Database initialization failed: {e}")
+        sys.exit(1)
 
 
 @cli.command()
@@ -142,6 +169,14 @@ def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
     
     if disable_usd and min_usd is not None:
         click.echo("❌ Error: Cannot use --min-usd with --disable-usd")
+        sys.exit(1)
+    
+    # CRITICAL: Validate token configuration before proceeding
+    try:
+        validate_tokens_before_operation("token refresh")
+    except TokenValidationError:
+        click.echo("❌ Token refresh aborted due to validation failures.")
+        click.echo("Fix the token configuration issues above and try again.")
         sys.exit(1)
     
     tokens_config = load_tokens_config()
@@ -183,7 +218,6 @@ def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
         click.echo(f"📊 Max accounts per token: unlimited")
     
     # Convert USD filters to Decimal for precision
-    from decimal import Decimal
     min_usd_decimal = Decimal(str(min_usd)) if min_usd else None
     
     if min_usd_decimal:

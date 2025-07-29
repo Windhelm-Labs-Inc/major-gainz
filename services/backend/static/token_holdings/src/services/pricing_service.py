@@ -7,6 +7,7 @@ from typing import Dict, Optional, List
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta
 import logging
+import json
 
 from ..config import DEFAULT_HEADERS, REQUEST_TIMEOUT, MAX_RETRIES, BACKOFF_FACTOR
 
@@ -89,82 +90,110 @@ class SaucerSwapPricingService(PricingServiceInterface):
                     return None
         
         return None
-    
-    def refresh_price_cache(self) -> bool:
-        """Refresh cached price data from SaucerSwap API."""
+
+    def _is_valid_token_data(self, token_data: dict) -> bool:
+        """Validates the structure and content of a single token data dictionary."""
+        if not isinstance(token_data, dict):
+            logger.warning(f"Invalid data type for token entry: {type(token_data)}")
+            return False
+        
+        token_id = token_data.get("id")
+        if not token_id or not isinstance(token_id, str):
+            logger.warning(f"Token data missing or invalid 'id': {token_data}")
+            return False
+            
+        price_usd_str = token_data.get("priceUsd")
+        if price_usd_str is None:
+            logger.warning(f"Token {token_id} missing 'priceUsd' field.")
+            return False
+        
         try:
-            logger.info("Refreshing SaucerSwap price cache...")
-            tokens_data = self._make_request("/tokens")
-            
-            if not tokens_data:
-                logger.error("Failed to fetch tokens data from SaucerSwap")
+            price_usd = Decimal(str(price_usd_str))
+            if price_usd < 0:
+                logger.warning(f"Token {token_id} has negative price: {price_usd}")
                 return False
+        except (ValueError, TypeError, InvalidOperation):
+            logger.warning(f"Token {token_id} has invalid price format: {price_usd_str}")
+            return False
             
-            # Validate response format
-            if not isinstance(tokens_data, list):
-                logger.error(f"Unexpected response format from SaucerSwap: expected list, got {type(tokens_data)}")
-                return False
+        decimals = token_data.get("decimals")
+        if decimals is None:
+            logger.warning(f"Token {token_id} missing 'decimals' field.")
+            return False
+        
+        try:
+            int_decimals = int(decimals)
+            if not (0 <= int_decimals <= 50): # Reasonable bounds for decimals
+                logger.warning(f"Token {token_id} has unusual decimals value: {decimals}")
+        except (ValueError, TypeError):
+            logger.warning(f"Token {token_id} has invalid decimals format: {decimals}")
+            return False
             
-            # Update cache
-            self._price_cache = {}
-            successful_updates = 0
-            
-            for token in tokens_data:
-                try:
-                    if not isinstance(token, dict):
-                        logger.warning(f"Skipping invalid token data: {token}")
+        return True
+
+    def refresh_price_cache(self) -> bool:
+        """
+        Refreshes the in-memory token price cache from the SaucerSwap API.
+        
+        Returns:
+            True if refresh was successful, False otherwise.
+        """
+        logger.info("Refreshing SaucerSwap price cache...")
+        
+        try:
+            response = self._make_request("/tokens")
+            if response:
+                # Validate response structure
+                if not isinstance(response, list):
+                    logger.error(f"SaucerSwap API returned unexpected format: {type(response)}")
+                    return False
+                
+                new_cache = {}
+                for item in response:
+                    token_data = None
+                    try:
+                        # The API might return a list of JSON strings instead of objects
+                        if isinstance(item, str):
+                            token_data = json.loads(item)
+                        elif isinstance(item, dict):
+                            token_data = item
+                        else:
+                            logger.warning(f"Skipping unexpected item type in SaucerSwap response: {type(item)}")
+                            continue
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to decode JSON string from SaucerSwap response: {item}")
                         continue
+                        
+                    if not self._is_valid_token_data(token_data):
+                        continue # Skip invalid token entries
                     
-                    token_id = token.get("id", "").strip()
-                    if not token_id:
-                        logger.warning("Skipping token with missing ID")
-                        continue
+                    token_id = token_data.get('id')
+                    price_usd_str = token_data.get("priceUsd", "0")
                     
-                    # Validate price data
-                    price_usd_str = token.get("priceUsd", "0")
                     try:
                         price_usd = Decimal(str(price_usd_str))
-                        if price_usd < 0:
-                            logger.warning(f"Negative price for token {token_id}: {price_usd}")
-                            price_usd = Decimal("0")
-                    except (ValueError, TypeError, InvalidOperation) as e:
-                        logger.warning(f"Invalid price data for token {token_id}: {price_usd_str} - {e}")
+                    except (InvalidOperation, ValueError, TypeError):
                         price_usd = Decimal("0")
                     
-                    # Validate decimals
-                    decimals = token.get("decimals", 0)
-                    try:
-                        decimals = int(decimals)
-                        if decimals < 0 or decimals > 50:  # Reasonable bounds
-                            logger.warning(f"Unusual decimals value for token {token_id}: {decimals}")
-                    except (ValueError, TypeError) as e:
-                        logger.warning(f"Invalid decimals for token {token_id}: {e}")
-                        decimals = 0
-                    
-                    self._price_cache[token_id] = {
-                        "symbol": token.get("symbol", ""),
-                        "decimals": decimals,
-                        "price_usd": price_usd,
-                        "updated_at": datetime.utcnow()
-                    }
-                    successful_updates += 1
-                    
-                except Exception as e:
-                    logger.warning(f"Error processing token data {token}: {e}")
-                    continue
-            
-            self._last_cache_update = datetime.utcnow()
-            logger.info(f"Price cache updated with {successful_updates}/{len(tokens_data)} tokens")
-            return successful_updates > 0
-            
-        except (requests.RequestException, ConnectionError, TimeoutError) as e:
-            logger.error(f"Network error refreshing price cache: {e}")
-            return False
-        except (ValueError, TypeError) as e:
-            logger.error(f"Data validation error refreshing price cache: {e}")
-            return False
+                    token_data['price_usd'] = price_usd
+
+                    if token_id:
+                        new_cache[token_id] = token_data
+                
+                if not new_cache:
+                    logger.warning("SaucerSwap API returned a list, but it contained no valid token data.")
+                    # Don't overwrite existing cache if the new one is empty but the old one wasn't
+                    return False if self._price_cache else True
+
+                self._price_cache = new_cache
+                self._last_cache_update = datetime.utcnow()
+                logger.info(f"Successfully refreshed SaucerSwap price cache with {len(self._price_cache)} tokens.")
+                return True
+            else:
+                logger.error("Failed to refresh SaucerSwap price cache - no response from API.")
+                return False
         except Exception as e:
-            logger.error(f"Unexpected error refreshing price cache: {e}")
+            logger.error(f"Error refreshing SaucerSwap price cache: {e}", exc_info=True)
             return False
     
     def get_token_price_usd(self, token_id: str) -> Optional[Decimal]:
@@ -174,7 +203,7 @@ class SaucerSwapPricingService(PricingServiceInterface):
                 return None
         
         token_data = self._price_cache.get(token_id)
-        if token_data:
+        if token_data and 'price_usd' in token_data:
             return token_data["price_usd"]
         
         logger.warning(f"Token {token_id} not found in SaucerSwap price data")
@@ -203,10 +232,10 @@ class SaucerSwapPricingService(PricingServiceInterface):
         
         return self._price_cache.get(token_id)
     
-    def get_supported_tokens(self) -> List[str]:
-        """Get list of token IDs supported by SaucerSwap."""
+    def get_supported_tokens(self) -> List[Dict]:
+        """Get list of token objects supported by SaucerSwap."""
         if not self._is_cache_valid():
             if not self.refresh_price_cache():
                 return []
         
-        return list(self._price_cache.keys())
+        return list(self._price_cache.values())

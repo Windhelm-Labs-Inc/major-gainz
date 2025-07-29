@@ -159,8 +159,11 @@ class TestSaucerSwapPricingService:
         with patch.object(pricing_service, '_make_request', return_value=mock_tokens_response):
             tokens = pricing_service.get_supported_tokens()
             assert len(tokens) == 2
-            assert "0.0.731861" in tokens
-            assert "0.0.2283230" in tokens
+            
+            # Extract token IDs for assertion
+            token_ids = [token['id'] for token in tokens]
+            assert "0.0.731861" in token_ids
+            assert "0.0.2283230" in token_ids
     
     @patch('src.services.pricing_service.requests.Session.get')
     def test_api_failure_handling(self, mock_get, pricing_service):
