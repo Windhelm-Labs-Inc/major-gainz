@@ -38,7 +38,7 @@ dev: frontend-install
 
 # Run backend Python tests via Poetry / pytest
 backend-tests:
-	cd services/backend && poetry run pytest -v
+	cd services/backend && poetry run pytest tests/ -v
 
 .PHONY: backend-tests 
 
