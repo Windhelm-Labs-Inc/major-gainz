@@ -3,7 +3,7 @@
 import time
 import requests
 import uuid
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from tqdm import tqdm
@@ -303,14 +303,22 @@ class HederaTokenFetcher:
         
         # Sort by balance descending
         balance_key = "balance_hbar" if token_symbol == "HBAR" else "balance"
-        sorted_holders = sorted(holders, key=lambda x: x[balance_key], reverse=True)
+        try:
+            sorted_holders = sorted(holders, key=lambda x: x[balance_key], reverse=True)
+        except (KeyError, TypeError) as e:
+            raise ValueError(f"Invalid holder data structure: {e}")
         
         total_accounts = len(sorted_holders)
         print(f"  📈 Calculating statistics for {total_accounts:,} {token_symbol} holders...")
         
+        # Validate dataset size
+        if total_accounts > 10_000_000:  # 10 million
+            logger.warning(f"Very large dataset ({total_accounts:,} accounts) - calculation may take time")
+        
         # Top 10 holders
         top_holders = []
-        for rank, holder in enumerate(sorted_holders[:10], 1):
+        top_count = min(10, total_accounts)  # Handle datasets with < 10 holders
+        for rank, holder in enumerate(sorted_holders[:top_count], 1):
             top_holders.append({
                 **holder,
                 "rank": rank,
@@ -319,23 +327,46 @@ class HederaTokenFetcher:
                 "is_percentile_marker": False
             })
         
-        # Percentile markers (99-1)
+        # Percentile markers (99-1) with precise Decimal calculation
         percentile_holders = []
+        
+        total_accounts_decimal = Decimal(total_accounts)
+        
         for percentile in range(99, 0, -1):
-            # Calculate position for this percentile
-            position = max(0, int((percentile / 100.0) * total_accounts) - 1)
-            position = min(position, total_accounts - 1)
+            # Use precise Decimal arithmetic to calculate position
+            percentile_decimal = Decimal(percentile)
             
-            holder = sorted_holders[position].copy()
-            holder.update({
-                "rank": position + 1,
-                "percentile": percentile,
-                "is_top_holder": False,
-                "is_percentile_marker": True
-            })
-            percentile_holders.append(holder)
+            # Calculate exact position: (percentile / 100) * total_accounts - 1
+            exact_position = (percentile_decimal / Decimal(100)) * total_accounts_decimal - Decimal(1)
+            
+            # Round down to get integer position, ensuring bounds
+            position = int(exact_position.quantize(Decimal(1), rounding=ROUND_DOWN))
+            position = max(0, min(position, total_accounts - 1))
+            
+            # Validate position
+            if position >= total_accounts:
+                logger.warning(f"Position {position} exceeds dataset size {total_accounts} for percentile {percentile}")
+                position = total_accounts - 1
+            
+            try:
+                holder = sorted_holders[position].copy()
+                holder.update({
+                    "rank": position + 1,
+                    "percentile": percentile,
+                    "is_top_holder": False,
+                    "is_percentile_marker": True
+                })
+                percentile_holders.append(holder)
+            except (IndexError, AttributeError) as e:
+                logger.error(f"Error processing percentile {percentile} at position {position}: {e}")
+                continue
         
         print(f"  ✅ Generated {len(top_holders)} top holders and {len(percentile_holders)} percentile markers")
+        
+        # Validate results
+        if len(percentile_holders) != 99:
+            logger.warning(f"Expected 99 percentile markers, got {len(percentile_holders)}")
+        
         return top_holders, percentile_holders
     
     def refresh_token_data(self, token_symbol: str, token_id: str, max_accounts: Optional[int] = None,
@@ -344,12 +375,18 @@ class HederaTokenFetcher:
         db_session = get_session()
         refresh_batch_id = str(uuid.uuid4())
         start_time = datetime.utcnow()
+        metadata = None
         
         try:
             print(f"\n🚀 Starting refresh for {token_symbol} (ID: {token_id})")
             
+            # Check for existing refresh in progress (Race Condition Protection)
+            existing_metadata = db_session.query(TokenMetadata).filter_by(token_symbol=token_symbol).first()
+            if existing_metadata and existing_metadata.refresh_in_progress:
+                raise ValueError(f"Refresh already in progress for {token_symbol}")
+            
             # Update metadata - refresh started
-            metadata = db_session.query(TokenMetadata).filter_by(token_symbol=token_symbol).first()
+            metadata = existing_metadata
             if not metadata:
                 metadata = TokenMetadata(
                     token_symbol=token_symbol,
@@ -363,31 +400,39 @@ class HederaTokenFetcher:
             db_session.commit()
             
             # Update price information
-            price_usd, tokens_per_usd = self._update_token_price_info(db_session, token_symbol, token_id)
+            try:
+                price_usd, tokens_per_usd = self._update_token_price_info(db_session, token_symbol, token_id)
+            except (requests.RequestException, ValueError, KeyError) as e:
+                logger.warning(f"Price update failed for {token_symbol}: {e}")
+                price_usd, tokens_per_usd = None, None
             
             self._log_operation(db_session, token_symbol, "fetch_started", 
                               f"Starting data refresh with USD filtering", refresh_batch_id,
                               min_usd_filter=min_usd_value, price_usd_used=price_usd)
             
             # Fetch holders
-            if token_symbol == "HBAR":
-                holders = self.fetch_hbar_holders(max_accounts, min_usd_value)
-            else:
-                holders = self.fetch_token_holders(token_id, token_symbol, max_accounts, min_usd_value)
+            try:
+                if token_symbol == "HBAR":
+                    holders = self.fetch_hbar_holders(max_accounts, min_usd_value)
+                else:
+                    holders = self.fetch_token_holders(token_id, token_symbol, max_accounts, min_usd_value)
+            except (requests.RequestException, ConnectionError, TimeoutError) as e:
+                raise RuntimeError(f"Failed to fetch holder data: {e}")
             
             if not holders:
-                raise Exception("No holders data fetched")
+                raise ValueError("No holders data fetched")
             
             # Calculate statistics
-            top_holders, percentile_holders = self.calculate_top_holders_and_percentiles(holders, token_symbol)
+            try:
+                top_holders, percentile_holders = self.calculate_top_holders_and_percentiles(holders, token_symbol)
+            except (ValueError, TypeError) as e:
+                raise RuntimeError(f"Failed to calculate statistics: {e}")
             
-            # Clear old data for this token
-            db_session.query(TokenHolding).filter_by(token_symbol=token_symbol).delete()
-            
-            # Store new data
+            # Prepare all new data before modifying database (Transaction Safety)
             balance_key = "balance_hbar" if token_symbol == "HBAR" else "balance"
+            new_holdings = []
             
-            # Store top holders
+            # Prepare top holders data
             for holder_data in top_holders:
                 holding = TokenHolding(
                     token_symbol=token_symbol,
@@ -401,9 +446,9 @@ class HederaTokenFetcher:
                     price_usd_at_refresh=price_usd,
                     refresh_batch_id=refresh_batch_id
                 )
-                db_session.add(holding)
+                new_holdings.append(holding)
             
-            # Store percentile markers
+            # Prepare percentile markers data
             for holder_data in percentile_holders:
                 holding = TokenHolding(
                     token_symbol=token_symbol,
@@ -417,23 +462,39 @@ class HederaTokenFetcher:
                     price_usd_at_refresh=price_usd,
                     refresh_batch_id=refresh_batch_id
                 )
-                db_session.add(holding)
+                new_holdings.append(holding)
             
-            # Update metadata - success
-            end_time = datetime.utcnow()
-            processing_time = (end_time - start_time).total_seconds()
-            
-            metadata.last_refresh_completed = end_time
-            metadata.refresh_in_progress = False
-            metadata.last_refresh_success = True
-            metadata.total_accounts_fetched = len(holders)
-            
-            db_session.commit()
-            
-            self._log_operation(db_session, token_symbol, "fetch_completed",
-                              f"Successfully refreshed {len(holders):,} accounts",
-                              refresh_batch_id, self.request_count, len(holders), processing_time,
-                              min_usd_value, price_usd)
+            # ATOMIC OPERATION: Clear old data and insert new data
+            try:
+                # Clear old data for this token
+                deleted_count = db_session.query(TokenHolding).filter_by(token_symbol=token_symbol).delete()
+                logger.info(f"Deleted {deleted_count} old holdings for {token_symbol}")
+                
+                # Store all new data
+                for holding in new_holdings:
+                    db_session.add(holding)
+                
+                # Update metadata - success
+                end_time = datetime.utcnow()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                metadata.last_refresh_completed = end_time
+                metadata.refresh_in_progress = False
+                metadata.last_refresh_success = True
+                metadata.total_accounts_fetched = len(holders)
+                
+                # Commit all changes atomically
+                db_session.commit()
+                
+                self._log_operation(db_session, token_symbol, "fetch_completed",
+                                  f"Successfully refreshed {len(holders):,} accounts",
+                                  refresh_batch_id, self.request_count, len(holders), processing_time,
+                                  min_usd_value, price_usd)
+                
+            except Exception as e:
+                # Rollback if database operations fail
+                db_session.rollback()
+                raise RuntimeError(f"Database operation failed: {e}")
             
             # Enhanced summary with USD info
             print(f"✅ {token_symbol} refresh completed in {processing_time:.1f}s")
@@ -445,16 +506,37 @@ class HederaTokenFetcher:
             
             return True
             
-        except Exception as e:
-            # Update metadata - error
-            metadata.refresh_in_progress = False
-            metadata.last_refresh_success = False
-            metadata.error_message = str(e)
-            db_session.commit()
+        except (ValueError, RuntimeError) as e:
+            # Handle expected errors
+            if metadata:
+                try:
+                    metadata.refresh_in_progress = False
+                    metadata.last_refresh_success = False
+                    metadata.error_message = str(e)
+                    db_session.commit()
+                except Exception:
+                    db_session.rollback()
             
             self._log_operation(db_session, token_symbol, "error", str(e), refresh_batch_id)
             
             print(f"❌ {token_symbol} refresh failed: {e}")
+            return False
+            
+        except Exception as e:
+            # Handle unexpected errors
+            logger.error(f"Unexpected error in refresh_token_data for {token_symbol}: {e}")
+            if metadata:
+                try:
+                    metadata.refresh_in_progress = False
+                    metadata.last_refresh_success = False
+                    metadata.error_message = f"Unexpected error: {str(e)}"
+                    db_session.commit()
+                except Exception:
+                    db_session.rollback()
+            
+            self._log_operation(db_session, token_symbol, "error", f"Unexpected error: {str(e)}", refresh_batch_id)
+            
+            print(f"❌ {token_symbol} refresh failed with unexpected error: {e}")
             return False
             
         finally:

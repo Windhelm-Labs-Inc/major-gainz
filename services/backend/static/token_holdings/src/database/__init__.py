@@ -1,7 +1,7 @@
 """Database package for token holdings tracking."""
 
 from .models import Base, TokenMetadata, TokenHolding, RefreshLog, TokenPriceHistory
-from .connection import get_engine, get_session, init_database
+from .connection import get_engine, get_session, get_db_session, init_database
 
 __all__ = [
     'Base',
@@ -10,6 +10,7 @@ __all__ = [
     'RefreshLog',
     'TokenPriceHistory',
     'get_engine',
-    'get_session', 
+    'get_session',
+    'get_db_session',
     'init_database'
 ] 

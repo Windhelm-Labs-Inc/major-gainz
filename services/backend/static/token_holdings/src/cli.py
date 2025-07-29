@@ -123,11 +123,44 @@ def init():
 @click.option('--disable-usd', is_flag=True, help='Disable USD pricing features')
 def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
     """Refresh token holder data from Hedera API."""
+    # Input validation
+    if max_accounts is not None:
+        if max_accounts <= 0:
+            click.echo("❌ Error: max-accounts must be a positive integer")
+            sys.exit(1)
+        if max_accounts > 50_000_000:  # 50 million seems reasonable upper bound
+            click.echo("❌ Error: max-accounts too large (maximum: 50,000,000)")
+            sys.exit(1)
+    
+    if min_usd is not None:
+        if min_usd < 0:
+            click.echo("❌ Error: min-usd must be non-negative")
+            sys.exit(1)
+        if min_usd > 1_000_000_000:  # 1 billion USD seems reasonable upper bound
+            click.echo("❌ Error: min-usd too large (maximum: $1,000,000,000)")
+            sys.exit(1)
+    
+    if disable_usd and min_usd is not None:
+        click.echo("❌ Error: Cannot use --min-usd with --disable-usd")
+        sys.exit(1)
+    
     tokens_config = load_tokens_config()
     
     if not tokens_config:
         click.echo("❌ No tokens configuration found!")
         sys.exit(1)
+    
+    # Validate token symbol if provided
+    if token:
+        if not isinstance(token, str) or not token.strip():
+            click.echo("❌ Error: Token symbol cannot be empty")
+            sys.exit(1)
+        
+        token = token.upper().strip()  # Normalize token symbol
+        if token not in tokens_config:
+            click.echo(f"❌ Token '{token}' not found in configuration!")
+            click.echo(f"Available tokens: {', '.join(tokens_config.keys())}")
+            sys.exit(1)
     
     # Handle interactive mode
     if interactive:
@@ -138,10 +171,7 @@ def refresh(token, max_accounts, export_csv, interactive, min_usd, disable_usd):
     else:
         # Handle non-interactive mode (existing logic)
         if token:
-            if token not in tokens_config:
-                click.echo(f"❌ Token '{token}' not found in configuration!")
-                click.echo(f"Available tokens: {', '.join(tokens_config.keys())}")
-                sys.exit(1)
+            # Token was already validated and normalized above
             tokens_to_refresh = {token: tokens_config[token]}
         else:
             tokens_to_refresh = tokens_config
