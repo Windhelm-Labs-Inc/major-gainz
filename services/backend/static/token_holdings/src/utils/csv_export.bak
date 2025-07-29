@@ -1,0 +1,92 @@
+"""Utilities for streaming API data to CSV files."""
+
+import hashlib
+import pandas as pd
+import csv
+from pathlib import Path
+from typing import List, Dict
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def hash_file(filepath: Path) -> str:
+    """Calculate SHA-256 hash of a file."""
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(chunk)
+        return sha256_hash.hexdigest()
+    except (IOError, OSError) as e:
+        logger.error(f"Error hashing file {filepath}: {e}")
+        raise
+
+
+class ApiCsvStreamer:
+    """Handles streaming of raw API data chunks to a CSV file."""
+
+    def __init__(self, filepath: Path, is_hbar: bool):
+        """
+        Initializes the streamer.
+        
+        Args:
+            filepath: The path to the CSV file to write to.
+            is_hbar: Flag indicating if the data is for HBAR (different structure).
+        """
+        self.filepath = filepath
+        self.is_hbar = is_hbar
+        self._buffer: List[Dict] = []
+        self._file_exists = filepath.exists()
+
+    def add_chunk(self, data: List[Dict]):
+        """Adds a chunk of raw API data to the internal buffer."""
+        if data:
+            self._buffer.extend(data)
+
+    def flush(self) -> int:
+        """
+        Writes the buffered data to the CSV file and clears the buffer.
+        
+        Returns:
+            The number of records written.
+        """
+        if not self._buffer:
+            return 0
+
+        num_records = len(self._buffer)
+        
+        try:
+            if self.is_hbar:
+                # Flatten the more complex HBAR account structure
+                records = [
+                    {
+                        'account': item.get('account'),
+                        'balance_tinybars': item.get('balance', {}).get('balance'),
+                        'created_timestamp': item.get('created_timestamp'),
+                        'expiry_timestamp': item.get('expiry_timestamp'),
+                        'auto_renew_period': item.get('auto_renew_period'),
+                        'memo': item.get('memo'),
+                        'alias': item.get('alias')
+                    } for item in self._buffer
+                ]
+            else:
+                # Token balance structure is already flat
+                records = self._buffer
+
+            df = pd.DataFrame(records)
+            
+            # Use append mode 'a', and write header only if file is new
+            df.to_csv(self.filepath, mode='a', header=not self._file_exists, index=False)
+            
+            # After the first successful write, the file will exist.
+            self._file_exists = True
+            
+        except (IOError, OSError, csv.Error) as e:
+            logger.error(f"Error streaming data to CSV {self.filepath}: {e}")
+            print(f"  ... ⚠️  Could not write chunk to {self.filepath.name}: {e}")
+            return 0
+        finally:
+            self._buffer.clear()
+            
+        return num_records 

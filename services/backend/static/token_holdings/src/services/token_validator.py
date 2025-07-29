@@ -4,22 +4,32 @@ import logging
 import sys
 from typing import Dict, Set, List, Optional
 from decimal import Decimal
+import requests
 
-from ..config import load_tokens_config, get_saucerswap_api_key
+from ..config import (
+    load_tokens_config, get_saucerswap_api_key,
+    load_decimals_config, save_decimals_config, HEDERA_TOKENS_ENDPOINT
+)
 from ..database import get_db_session, TokenMetadata
 from .pricing_service import SaucerSwapPricingService
 
 # Configure critical logger
 logger = logging.getLogger(__name__)
 
+# Simple in-memory cache for token decimals to avoid redundant API calls within a session
+_decimals_cache = {}
+
+
 class TokenValidationError(Exception):
     """Critical error in token validation that requires immediate attention."""
     pass
+
 
 class TokenValidator:
     """Validates token configuration against database and external APIs."""
     
     def __init__(self):
+        self.session = requests.Session()
         self.pricing_service = None
         api_key = get_saucerswap_api_key()
         if api_key:
@@ -38,15 +48,20 @@ class TokenValidator:
             # Step 1: Load and validate configuration file
             tokens_config = self._validate_tokens_config()
             
-            # Step 2: Check database state vs configuration
+            # Step 2: Dynamically fetch and update token decimals
+            self._update_token_decimals(tokens_config)
+            
+            # Step 3: Check database state vs configuration
             self._validate_database_consistency(tokens_config)
             
-            # Step 3: Validate tokens exist on SaucerSwap
+            # Step 4: Validate tokens exist on SaucerSwap
             self._validate_tokens_on_saucerswap(tokens_config)
             
             logger.info("✅ All token validations passed successfully")
             return True
             
+        except TokenValidationError:
+            raise # Re-raise to ensure it's caught by CLI
         except Exception as e:
             self._critical_failure(f"Token validation failed: {e}")
     
@@ -84,6 +99,64 @@ class TokenValidator:
             raise  # Re-raise our critical failures
         except Exception as e:
             self._critical_failure(f"CRITICAL: Failed to load tokens_enabled.json: {e}")
+    
+    def _fetch_token_info_from_hedera(self, token_id: str) -> Optional[Dict]:
+        """Fetch detailed token information from Hedera Mirror Node."""
+        if not token_id or token_id == "0.0.0":
+            return None
+        
+        url = f"{HEDERA_TOKENS_ENDPOINT}/{token_id}"
+        try:
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Failed to fetch token info for {token_id}: {e}")
+            return None
+
+    def _update_token_decimals(self, tokens_config: Dict[str, str]) -> None:
+        """
+        Dynamically fetch and save decimal values for any new tokens.
+        This makes the system self-configuring for token precision.
+        """
+        logger.info("🔍 Checking and updating token decimal configurations...")
+        
+        decimals_data = load_decimals_config()
+        updated = False
+        
+        # HBAR has fixed decimals
+        if "HBAR" not in decimals_data:
+            decimals_data["HBAR"] = 8
+            updated = True
+            logger.info("Set default decimals for HBAR to 8")
+        
+        for token_symbol, token_id in tokens_config.items():
+            if token_symbol not in decimals_data:
+                logger.info(f"Decimal value for {token_symbol} not found. Fetching from Hedera API...")
+                
+                token_info = self._fetch_token_info_from_hedera(token_id)
+                if token_info and 'decimals' in token_info:
+                    try:
+                        decimals = int(token_info['decimals'])
+                        decimals_data[token_symbol] = decimals
+                        _decimals_cache[token_symbol] = decimals
+                        updated = True
+                        logger.info(f"✅ Fetched and saved decimals for {token_symbol}: {decimals}")
+                    except (ValueError, TypeError):
+                        self._critical_failure(
+                            f"CRITICAL: Invalid 'decimals' value received for {token_symbol} from Hedera API."
+                        )
+                else:
+                    self._critical_failure(
+                        f"CRITICAL: Could not fetch 'decimals' for {token_symbol} (ID: {token_id}).\n"
+                        f"Please verify the token ID is correct and the Hedera Mirror Node is accessible."
+                    )
+        
+        if updated:
+            save_decimals_config(decimals_data)
+            logger.info("💾 Saved updated token decimals to src/token_decimals.json")
+        else:
+            logger.info("✅ All token decimals are up-to-date.")
     
     def _validate_database_consistency(self, tokens_config: Dict[str, str]) -> None:
         """Check if database needs expansion for new tokens."""

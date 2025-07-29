@@ -9,14 +9,16 @@ Base = declarative_base()
 
 
 class TokenMetadata(Base):
-    """Track metadata for token data refreshes."""
-    
+    """Stores metadata about token data refreshes."""
     __tablename__ = 'token_metadata'
     
     id = Column(Integer, primary_key=True)
-    token_symbol = Column(String(50), unique=True, nullable=False, index=True)
-    token_id = Column(String(50), nullable=False)  # e.g., "0.0.731861"
-    last_refresh_started = Column(DateTime(timezone=True), nullable=True)
+    token_symbol = Column(String, unique=True, nullable=False, index=True)
+    token_id = Column(String, nullable=False)
+    decimals = Column(Integer, nullable=False, default=0)
+    
+    # Refresh tracking
+    last_refresh_started = Column(DateTime)
     last_refresh_completed = Column(DateTime(timezone=True), nullable=True)
     last_refresh_success = Column(Boolean, default=False)
     csv_filepath = Column(String(500), nullable=True)
@@ -42,7 +44,7 @@ class TokenHolding(Base):
     id = Column(Integer, primary_key=True)
     token_symbol = Column(String(50), nullable=False, index=True)
     account_id = Column(String(50), nullable=False)
-    balance = Column(Float, nullable=False)
+    balance = Column(DECIMAL(38, 8), nullable=False)
     balance_rank = Column(Integer, nullable=True)  # 1=highest, 2=second highest, etc.
     percentile_rank = Column(Float, nullable=True)  # 99.9, 99.8, etc.
     is_top_holder = Column(Boolean, default=False)  # True for top 1-10

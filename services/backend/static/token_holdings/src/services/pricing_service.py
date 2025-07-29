@@ -197,7 +197,15 @@ class SaucerSwapPricingService(PricingServiceInterface):
             return False
     
     def get_token_price_usd(self, token_id: str) -> Optional[Decimal]:
-        """Get USD price for a token."""
+        """
+        Get USD price for a token.
+        
+        Handles HBAR (0.0.0) separately by querying the Hedera exchange rate API.
+        """
+        # Special handling for HBAR
+        if token_id == '0.0.0':
+            return self.get_hbar_price_usd()
+
         if not self._is_cache_valid():
             if not self.refresh_price_cache():
                 return None
@@ -208,6 +216,40 @@ class SaucerSwapPricingService(PricingServiceInterface):
         
         logger.warning(f"Token {token_id} not found in SaucerSwap price data")
         return None
+
+    def get_hbar_price_usd(self) -> Optional[Decimal]:
+        """Fetches the current HBAR to USD exchange rate from Hedera's API."""
+        logger.info("Fetching HBAR price from Hedera exchange rate API...")
+        try:
+            # Use a different base URL for this specific Hedera API endpoint
+            response = requests.get(
+                "https://mainnet.mirrornode.hedera.com/api/v1/network/exchangerate",
+                headers=DEFAULT_HEADERS,
+                timeout=REQUEST_TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            current_rate = data.get('current_rate')
+            if not current_rate:
+                logger.error("HBAR exchange rate data is missing 'current_rate' field.")
+                return None
+
+            hbar_equiv = current_rate.get('hbar_equiv')
+            cent_equiv = current_rate.get('cent_equiv')
+
+            if not hbar_equiv or not cent_equiv:
+                logger.error("HBAR exchange rate data is incomplete.")
+                return None
+            
+            # The price is cents per hbar, so divide by 100 to get USD
+            price_usd = Decimal(cent_equiv) / Decimal(hbar_equiv) / Decimal(100)
+            logger.info(f"Successfully fetched HBAR price: ${price_usd:.6f}")
+            return price_usd
+
+        except (requests.RequestException, KeyError, TypeError, InvalidOperation) as e:
+            logger.error(f"Failed to fetch or parse HBAR price: {e}")
+            return None
     
     def get_tokens_for_usd_amount(self, token_id: str, usd_amount: Decimal) -> Optional[Decimal]:
         """Get number of tokens equivalent to USD amount."""
