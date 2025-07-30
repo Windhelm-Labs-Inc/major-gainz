@@ -26,6 +26,15 @@ class SaucerSwapClient(BaseAPIClient):
             pass
             
         api_key = API_KEYS.get('saucerswap')
+        
+        # DEBUG: Print SaucerSwap initialization details
+        print(f"🔍 DEBUG - SaucerSwap Client Init:")
+        print(f"API_KEYS dict: {API_KEYS}")
+        print(f"saucerswap key: {repr(api_key)}")
+        print(f"key is None: {api_key is None}")
+        print(f"key is valid: {bool(api_key)}")
+        print("=" * 50)
+        
         if not api_key:
             logger.warning("SaucerSwap API key not found in configuration")
             

@@ -128,7 +128,7 @@ const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onCl
         balance,
         height: Math.log10(balance + 1) * 10,
         isUserLevel,
-        description: `${p}th percentile: ${formatBalance(balance, selectedToken.symbol)}`
+        description: `${p}th percentile: ${formatBalance(balance, selectedToken?.symbol || '')}`
       }
     })
   }
@@ -257,7 +257,7 @@ const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onCl
               borderRadius: '8px',
               position: 'relative'
             }}>
-              {createDistributionBars().map((bar, idx) => (
+              {createDistributionBars().map((bar, _idx) => (
                 <div 
                   key={bar.percentile} 
                   style={{ 
@@ -325,7 +325,7 @@ const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onCl
           {/* Top 10 Holders */}
           <div>
             <h4 style={{ margin: '0 0 1rem 0', color: '#e5e7eb' }}>Top 10 Holders</h4>
-            <div style={{ space: '0.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {holderData.top_10_holders.map((holder, idx) => (
                 <div key={holder.account_id} style={{
                   display: 'flex',

@@ -59,7 +59,7 @@ const PortfolioChart: React.FC<Props> = ({ data, selectedTokenId, onTokenSelect 
         }
       }
     },
-    onClick: (event: any, elements: any[]) => {
+    onClick: (_event: any, elements: any[]) => {
       if (elements.length > 0 && onTokenSelect) {
         const index = elements[0].index
         const holding = priced[index]

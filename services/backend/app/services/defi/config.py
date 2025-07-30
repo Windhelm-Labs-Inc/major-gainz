@@ -38,8 +38,52 @@ DEFAULT_HEADERS = {
 }
 
 def load_api_keys() -> Dict[str, Optional[str]]:
-    """Load API keys from appSettings.json."""
+    """Load API keys from environment variables (secure) or fallback to appSettings.json."""
+    # Try environment variables first (secure approach)
+    env_keys = {
+        'saucerswap': os.getenv('SAUCER_SWAP_API_KEY'),
+        'openai': os.getenv('OPENAI_API_KEY'),
+        'walletconnect': os.getenv('WALLETCONNECT_PROJECT_ID')
+    }
+    
+    # Filter out placeholder/invalid values
+    def is_valid_key(key: Optional[str]) -> bool:
+        if not key:
+            return False
+        # Check for common placeholder patterns
+        placeholders = [
+            'your-saucerswap-api-key-here',
+            'your-openai-api-key-here', 
+            'sk-proj-your-openai-api-key-here',
+            'sk-proj-placeholder-replace-with-real-key'
+        ]
+        return key not in placeholders and not key.startswith('your-') and not key.startswith('placeholder')
+    
+    # Clean environment keys - set invalid ones to None
+    cleaned_env_keys = {
+        'saucerswap': env_keys['saucerswap'] if is_valid_key(env_keys['saucerswap']) else None,
+        'openai': env_keys['openai'] if is_valid_key(env_keys['openai']) else None,
+        'walletconnect': env_keys['walletconnect'] if is_valid_key(env_keys['walletconnect']) else None
+    }
+    
+    # Log what we found and warn about placeholders
+    if env_keys['saucerswap'] and not cleaned_env_keys['saucerswap']:
+        logger.warning("SaucerSwap API key found but appears to be placeholder - replace with real key in .env")
+    if env_keys['openai'] and not cleaned_env_keys['openai']:
+        logger.warning("OpenAI API key found but appears to be placeholder - replace with real key in .env")
+    
+    # If we have any environment variables (even if some are placeholders), use the cleaned version
+    if any(env_keys.values()):
+        valid_keys = [k for k, v in cleaned_env_keys.items() if v]
+        if valid_keys:
+            logger.info(f"Loading API keys from environment variables (secure): {valid_keys}")
+        else:
+            logger.warning("Environment variables found but all appear to be placeholders")
+        return cleaned_env_keys
+    
+    # Fallback to appSettings.json for backward compatibility
     try:
+        logger.warning("Environment variables not found, falling back to appSettings.json (less secure)")
         # Navigate to frontend directory from backend/app/services/defi/
         app_settings_path = os.path.join(
             os.path.dirname(__file__), "..", "..", "..", "..", "frontend", "appSettings.json"
@@ -48,19 +92,24 @@ def load_api_keys() -> Dict[str, Optional[str]]:
         
         if not os.path.exists(app_settings_path):
             logger.warning(f"App settings file not found at: {app_settings_path}")
-            return {}
+            return env_keys  # Return env_keys (even if None values)
             
         with open(app_settings_path, 'r') as f:
             settings = json.load(f)
             
         return {
-            'saucerswap': settings.get('SAUCER_SWAP_API_KEY'),
-            'openai': settings.get('OPENAI_API_KEY'),
-            'walletconnect': settings.get('WALLETCONNECT_PROJECT_ID')
+            'saucerswap': env_keys['saucerswap'] or settings.get('SAUCER_SWAP_API_KEY'),
+            'openai': env_keys['openai'] or settings.get('OPENAI_API_KEY'),
+            'walletconnect': env_keys['walletconnect'] or settings.get('WALLETCONNECT_PROJECT_ID')
         }
     except Exception as e:
-        logger.error(f"Failed to load API keys: {e}")
-        return {}
+        logger.error(f"Failed to load API keys from both environment and settings file: {e}")
+        return env_keys  # Return env_keys (even if None values)
 
 # Load API keys at module import
 API_KEYS = load_api_keys()
+
+# DEBUG: Print loaded API keys
+print("🔍 DEBUG - DeFi Config API Keys Loaded:")
+print(f"API_KEYS: {API_KEYS}")
+print("=" * 50)
