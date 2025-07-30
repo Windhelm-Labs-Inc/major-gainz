@@ -1,10 +1,23 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Load environment variables early
+from dotenv import load_dotenv
+load_dotenv()
+
+# DEBUG: Print environment variables at startup
+print("🔍 DEBUG - Environment Variables Loaded:")
+print(f"OPENAI_API_KEY: {repr(os.getenv('OPENAI_API_KEY'))}")
+print(f"SAUCER_SWAP_API_KEY: {repr(os.getenv('SAUCER_SWAP_API_KEY'))}")
+print(f"HEDERA_NETWORK: {repr(os.getenv('HEDERA_NETWORK'))}")
+print(f"DATABASE_URL: {repr(os.getenv('DATABASE_URL'))}")
+print("=" * 50)
+
 from .database import Base, engine
 from .crud import refresh_all_tokens
-# Import routers including new portfolio
-from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings
+# Import routers including new portfolio, defi, and chat
+from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi, chat
 
 Base.metadata.create_all(bind=engine)
 
@@ -29,6 +42,8 @@ app.include_router(ohlcv.router)
 app.include_router(maintenance.router)
 app.include_router(portfolio.router)
 app.include_router(token_holdings.router)
+app.include_router(defi.router)
+app.include_router(chat.router)
 
 
 @app.on_event("startup")

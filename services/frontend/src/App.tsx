@@ -1,6 +1,6 @@
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore – json import
-import settingsJson from '../appSettings.json'
+// Environment variables bundled at build time
+declare const __WALLETCONNECT_PROJECT_ID__: string
+declare const __HEDERA_NETWORK__: string
 import { useState, lazy, Suspense, useEffect, useCallback } from 'react'
 import type { Portfolio, Holding } from './types/portfolio'
 import NetworkSelector from './components/NetworkSelector'
@@ -9,12 +9,13 @@ import AddressInput from './components/AddressInput'
 import ChatWindow from './components/ChatWindow'
 import AddressDisplay from './components/AddressDisplay'
 import TokenHolderAnalysis from './components/TokenHolderAnalysis'
+import JsonExplorer from './components/JsonExplorer'
 import { useScratchpad } from './hooks/useScratchpad'
 import './App.css'
 
 function App() {
   const [connectedWallet, setConnectedWallet] = useState<string | null>(null)
-  const defaultNet = (settingsJson as any).HEDERA_NETWORK === 'testnet' ? 'testnet' : 'mainnet'
+  const defaultNet = __HEDERA_NETWORK__ === 'testnet' ? 'testnet' : 'mainnet'
   const [network, setNetwork] = useState<'mainnet' | 'testnet'>(defaultNet)
   const handleNetworkChange = (net: 'mainnet' | 'testnet') => {
     console.log('[App] Network changed:', net)
@@ -26,10 +27,12 @@ function App() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false)
   const [selectedToken, setSelectedToken] = useState<Holding | null>(null)
+  const [defiData, setDefiData] = useState<any>(null)
+  const [isLoadingDefi, setIsLoadingDefi] = useState(false)
+  const [defiPanelWidth, setDefiPanelWidth] = useState(400)
 
   // Scratchpad integration
   const {
-    scratchpad,
     updateSelectedToken,
     updateHolderAnalysis,
     updatePortfolioSummary,
@@ -65,8 +68,9 @@ function App() {
     setSelectedAddress(addressToSelect)
     // Update scratchpad with user context
     updateUserContext(addressToSelect, network, connectedWallet || 'manual')
-    // reset portfolio when address changes
+    // reset portfolio and defi data when address changes
     setPortfolio(null)
+    setDefiData(null)
   }
 
   const handleTokenSelect = (holding: Holding) => {
@@ -95,23 +99,59 @@ function App() {
       return
     }
     setIsLoadingPortfolio(true)
+    setIsLoadingDefi(true)
+    
     try {
-      const res = await fetch(`/portfolio/${selectedAddress}?network=${network}`)
-      if (!res.ok) {
-        const txt = await res.text()
-        console.error('[App] Backend error body', txt)
-        throw new Error(txt)
+      // Load portfolio and DeFi data in parallel
+      const [portfolioRes, defiRes] = await Promise.all([
+        fetch(`/portfolio/${selectedAddress}?network=${network}`),
+        fetch(`/defi/profile/${selectedAddress}?testnet=${network === 'testnet'}`)
+      ])
+      
+      // Handle portfolio response
+      if (!portfolioRes.ok) {
+        const txt = await portfolioRes.text()
+        console.error('[App] Portfolio backend error body', txt)
+        throw new Error(`Portfolio: ${txt}`)
       }
-      const data: Portfolio = await res.json()
-      console.log('[App] Portfolio loaded:', data)
+      const portfolioData: Portfolio = await portfolioRes.json()
+      console.log('[App] Portfolio loaded:', portfolioData)
       // Post-process to fetch missing prices
-      const enriched = await enrichMissingPrices(data)
+      const enriched = await enrichMissingPrices(portfolioData)
       setPortfolio(enriched)
+      
+      // Handle DeFi response
+      if (defiRes.ok) {
+        // Check if response is actually JSON
+        const contentType = defiRes.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const defiData = await defiRes.json()
+            console.log('[App] DeFi data loaded:', defiData)
+            setDefiData(defiData)
+          } catch (jsonError) {
+            console.error('[App] DeFi response parse error:', jsonError)
+            const responseText = await defiRes.text()
+            console.warn('[App] DeFi response was not valid JSON:', responseText.substring(0, 200))
+            setDefiData({ error: 'Invalid JSON response', message: 'DeFi API returned non-JSON data' })
+          }
+        } else {
+          const responseText = await defiRes.text()
+          console.warn('[App] DeFi API returned non-JSON content:', responseText.substring(0, 200))
+          setDefiData({ error: 'Non-JSON response', message: 'DeFi API returned HTML instead of JSON', content: responseText.substring(0, 500) })
+        }
+      } else {
+        const defiError = await defiRes.text()
+        console.warn('[App] DeFi fetch failed with status:', defiRes.status, defiError)
+        setDefiData({ error: defiError, message: `DeFi API error (${defiRes.status})` })
+      }
+      
     } catch (err: any) {
-      console.error('Portfolio fetch failed', err)
+      console.error('Portfolio/DeFi fetch failed', err)
       alert('Failed to load portfolio')
     } finally {
       setIsLoadingPortfolio(false)
+      setIsLoadingDefi(false)
     }
   }
 
@@ -189,11 +229,19 @@ function App() {
         />
       )}
 
+      {/* DeFi JSON Explorer Sidebar */}
+      <JsonExplorer 
+        data={defiData} 
+        isLoading={isLoadingDefi}
+        onWidthChange={setDefiPanelWidth}
+      />
+
       {/* Main Content */}
       <div className="container" style={{ 
         marginLeft: selectedToken ? '400px' : '0',
-        transition: 'margin-left 0.3s ease',
-        maxWidth: selectedToken ? 'calc(100vw - 400px)' : '100%'
+        marginRight: `${defiPanelWidth}px`, // Dynamic space for resizable DeFi panel
+        transition: 'margin-left 0.3s ease, margin-right 0.1s ease',
+        maxWidth: selectedToken ? `calc(100vw - ${400 + defiPanelWidth}px)` : `calc(100vw - ${defiPanelWidth}px)`
       }}>
         {/* Header Section - Always Centered */}
         <div className="header" style={{

@@ -4,16 +4,15 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"  # Frontend port
-      - "8000:8000"  # Backend port
-    environment:
-      - BACKEND_PORT=8000
-      - FRONTEND_PORT=3000
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"  # Frontend port
+      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"    # Backend port
+    env_file:
+      - .env  # Load environment variables from top-level .env file
     volumes:
       # Mount logs directory for persistence
       - ./services/backend/logs:/app/services/backend/logs
-      # Mount app settings for configuration without rebuild
-      - ./services/frontend/appSettings.json:/app/services/frontend/appSettings.json
+      # Mount the top-level .env file for runtime changes
+      - ./.env:/app/.env
       # Optional: Mount source code for development (uncomment for live reload)
       # - ./services:/app/services
     working_dir: /app
