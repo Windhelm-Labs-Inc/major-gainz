@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine
 from .crud import refresh_all_tokens
-# Import routers including new portfolio
-from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings
+# Import routers including new portfolio and defi
+from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi
 
 Base.metadata.create_all(bind=engine)
 
@@ -29,6 +29,7 @@ app.include_router(ohlcv.router)
 app.include_router(maintenance.router)
 app.include_router(portfolio.router)
 app.include_router(token_holdings.router)
+app.include_router(defi.router)
 
 
 @app.on_event("startup")
