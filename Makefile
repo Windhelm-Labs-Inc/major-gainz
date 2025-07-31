@@ -170,6 +170,6 @@ docker-dev: sync-env
 
 # Run using Docker Compose
 docker-compose-dev: sync-env
-	docker-compose up --build
+	docker compose up --build
 
 .PHONY: docker-compose-dev
