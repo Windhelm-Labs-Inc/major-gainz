@@ -67,9 +67,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
     for (const symbol of symbols) {
       try {
         const [meanResp, stdResp, logReturnsResp] = await Promise.all([
-          fetch(`http://localhost:8000/ohlcv/${symbol}/mean_return?days=30`),
-          fetch(`http://localhost:8000/ohlcv/${symbol}/return_std?days=30`),
-          fetch(`http://localhost:8000/ohlcv/${symbol}/log_returns?days=14`)
+                  fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://0.0.0.0:8000'}/ohlcv/${symbol}/mean_return?days=30`),
+        fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://0.0.0.0:8000'}/ohlcv/${symbol}/return_std?days=30`),
+        fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://0.0.0.0:8000'}/ohlcv/${symbol}/log_returns?days=14`)
         ])
         
         if (meanResp.ok && stdResp.ok && logReturnsResp.ok) {

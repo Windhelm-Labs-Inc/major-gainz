@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Determine backend URL based on environment
+// In Docker: backend is internal on localhost
+// In local dev: backend is on 0.0.0.0 (for cross-platform compatibility)
+const backendUrl = process.env.DOCKER_ENV === 'true' ? 'http://127.0.0.1:8000' : 'http://0.0.0.0:8000'
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -24,20 +29,20 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
-    open: true,
+    open: false,
     fs: {
       strict: true,
       allow: ['src', 'public'], // Minimal for dev only
       deny: ['appSettings.json', '.env*', '../*', '*.config.*']
     },
     proxy: {
-      '/ohlcv': 'http://localhost:8000',
-      '/tokens': 'http://localhost:8000', 
-      '/portfolio': 'http://localhost:8000',
-      '/refresh': 'http://localhost:8000',
-      '/token_holdings': 'http://localhost:8000',
-      '/defi': 'http://localhost:8000',
-      '/chat': 'http://localhost:8000'
+      '/ohlcv': backendUrl,
+      '/tokens': backendUrl, 
+      '/portfolio': backendUrl,
+      '/refresh': backendUrl,
+      '/token_holdings': backendUrl,
+      '/defi': backendUrl,
+      '/chat': backendUrl
     }
   },
   
@@ -45,15 +50,15 @@ export default defineConfig({
   preview: {
     port: 3000,
     host: '0.0.0.0',
-    open: true,
+    open: false,
     proxy: {
-      '/ohlcv': 'http://localhost:8000',
-      '/tokens': 'http://localhost:8000',
-      '/portfolio': 'http://localhost:8000', 
-      '/refresh': 'http://localhost:8000',
-      '/token_holdings': 'http://localhost:8000',
-      '/defi': 'http://localhost:8000',
-      '/chat': 'http://localhost:8000'
+      '/ohlcv': backendUrl,
+      '/tokens': backendUrl,
+      '/portfolio': backendUrl, 
+      '/refresh': backendUrl,
+      '/token_holdings': backendUrl,
+      '/defi': backendUrl,
+      '/chat': backendUrl
     }
   },
   

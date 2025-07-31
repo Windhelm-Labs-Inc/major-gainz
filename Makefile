@@ -33,7 +33,7 @@ sync-env:
 # --- Backend --------------------------------------------------------------
 
 backend-dev:
-	cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)
+	cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)
 
 # --- Frontend -------------------------------------------------------------
 
@@ -44,10 +44,10 @@ frontend-build:
 	cd services/frontend && npm run build
 
 frontend-dev:
-	cd services/frontend && npm run dev -- --port $(FRONTEND_PORT)
+	cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0
 
 frontend-dev-secure:
-	cd services/frontend && npm run dev-secure -- --port $(FRONTEND_PORT)
+	cd services/frontend && npm run dev-secure -- --port $(FRONTEND_PORT) --host 0.0.0.0
 
 # --- Combined Dev ---------------------------------------------------------
 # Starts backend (in background) then the frontend dev server.
@@ -69,18 +69,18 @@ dev: sync-env frontend-install
 	  }; \
 	  trap cleanup INT TERM EXIT; \
 	  echo "Starting backend..."; \
-	  (cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)) & \
+	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
 	  BACK_PID=$$!; \
 	  echo "Waiting for backend to start..."; \
 	  sleep 2; \
 	  echo "Starting frontend..."; \
 	  echo "Backend PID: $$BACK_PID"; \
-	  echo "Frontend: http://localhost:$(FRONTEND_PORT)"; \
-	  echo "Backend: http://localhost:$(BACKEND_PORT)"; \
+	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT)"; \
+	  echo "Backend: http://0.0.0.0:$(BACKEND_PORT)"; \
 	  echo ""; \
 	  echo "Press Ctrl+C to stop both services"; \
 	  echo ""; \
-	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT); \
+	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0; \
 	'
 
 dev-secure: sync-env frontend-install
@@ -101,18 +101,18 @@ dev-secure: sync-env frontend-install
 	  echo "Building frontend securely..."; \
 	  (cd services/frontend && npm run build); \
 	  echo "Starting backend..."; \
-	  (cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)) & \
+	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
 	  BACK_PID=$$!; \
 	  echo "Waiting for backend to start..."; \
 	  sleep 2; \
 	  echo "Starting SECURE frontend (bundled only)..."; \
 	  echo "Backend PID: $$BACK_PID"; \
-	  echo "Frontend: http://localhost:$(FRONTEND_PORT)"; \
-	  echo "Backend: http://localhost:$(BACKEND_PORT)"; \
+	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT)"; \
+	  echo "Backend: http://0.0.0.0:$(BACKEND_PORT)"; \
 	  echo ""; \
 	  echo "Press Ctrl+C to stop both services"; \
 	  echo ""; \
-	  (cd services/frontend && npm run preview -- --port $(FRONTEND_PORT)); \
+	  (cd services/frontend && npm run preview -- --port $(FRONTEND_PORT) --host 0.0.0.0); \
 	'
 
 .PHONY: backend-dev frontend-install frontend-build frontend-dev frontend-dev-secure dev dev-secure sync-env
@@ -131,12 +131,42 @@ backend-rebuild-db:
 
 .PHONY: backend-rebuild-db 
 
+# Docker development mode - backend binds to localhost, frontend to 0.0.0.0
+docker-dev-internal: sync-env frontend-install
+	# DOCKER MODE: Backend on localhost (internal), Frontend on 0.0.0.0 (exposed)
+	bash -c '\
+	  set -e; \
+	  cleanup() { \
+	    echo ""; \
+	    echo "Shutting down services..."; \
+	    if [ ! -z "$$BACK_PID" ] && kill -0 $$BACK_PID 2>/dev/null; then \
+	      echo "Stopping backend (PID: $$BACK_PID)..."; \
+	      kill $$BACK_PID 2>/dev/null || true; \
+	      wait $$BACK_PID 2>/dev/null || true; \
+	    fi; \
+	    echo "Services stopped."; \
+	  }; \
+	  trap cleanup INT TERM EXIT; \
+	  echo "Starting internal backend (localhost only)..."; \
+	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 127.0.0.1 --port $(BACKEND_PORT) --loop asyncio) & \
+	  BACK_PID=$$!; \
+	  echo "Waiting for backend to start..."; \
+	  sleep 2; \
+	  echo "Starting exposed frontend..."; \
+	  echo "Backend PID: $$BACK_PID (internal only)"; \
+	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT) (exposed)"; \
+	  echo "Backend: http://127.0.0.1:$(BACKEND_PORT) (internal only)"; \
+	  echo ""; \
+	  echo "Press Ctrl+C to stop both services"; \
+	  echo ""; \
+	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0; \
+	'
+
 # Build and run using Docker script (with volume mounts)
 docker-dev: sync-env
 	./docker-build-and-run.sh
 
-
-.PHONY: docker-dev 
+.PHONY: docker-dev docker-dev-internal
 
 # Run using Docker Compose
 docker-compose-dev: sync-env

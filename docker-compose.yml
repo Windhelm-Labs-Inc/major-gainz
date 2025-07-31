@@ -4,8 +4,7 @@ services:
   app:
     build: .
     ports:
-      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"  # Frontend port
-      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"    # Backend port
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"  # Frontend port only - backend is internal
     env_file:
       - .env  # Load environment variables from top-level .env file
     volumes:

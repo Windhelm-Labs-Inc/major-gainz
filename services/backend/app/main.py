@@ -27,10 +27,14 @@ app = FastAPI(title="Hedera Token OHLCV API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",     # Local development
-        "http://127.0.0.1:3000",    
-        "http://0.0.0.0:3000",      
+        "http://0.0.0.0:3000",      # Local development
+        "http://0.0.0.0:3001",      # Alt port
+        "http://127.0.0.1:3000",    # Docker internal localhost
+        "http://127.0.0.1:3001",    # Docker internal localhost alt port
+        "http://localhost:3000",    # Docker internal localhost
+        "http://localhost:3001",    # Docker internal localhost alt port
         "http://host.docker.internal:3000",  # Docker Bindings
+        "http://host.docker.internal:3001",  # Docker alt port
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -52,4 +56,5 @@ async def startup_event():
     await refresh_all_tokens()
 
 
-# To run: `uvicorn app.main:app --reload` 
+# To run: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+# Docker: `uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --loop asyncio` 

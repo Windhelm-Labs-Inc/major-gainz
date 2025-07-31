@@ -38,12 +38,18 @@ RUN mkdir -p /app/services/backend/logs
 # Return to project root
 WORKDIR /app
 
-# Expose the ports for both frontend and backend
-EXPOSE 3000 8000
+# Expose only the frontend port - backend is internal only
+EXPOSE 3000
 
 # Set environment variables for ports (matching Makefile defaults)
 ENV BACKEND_PORT=8000
 ENV FRONTEND_PORT=3000
+# Set Docker environment flag for internal backend URL
+ENV DOCKER_ENV=true
+ENV VITE_BACKEND_URL=http://127.0.0.1:8000
+# Force IPv4 to avoid networking issues
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
-# Use the Makefile dev command to start both services
-CMD ["make", "dev"] 
+# Use the Docker-specific command that hides backend internally
+CMD ["make", "docker-dev-internal"] 

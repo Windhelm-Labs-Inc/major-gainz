@@ -59,8 +59,8 @@ make docker-compose-dev
 ```
 
 The application will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend**: http://localhost:8000
+- **Frontend**: http://0.0.0.0:3000
+- **Backend**: http://0.0.0.0:8000
 
 ## Core Features
 
