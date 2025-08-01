@@ -4,9 +4,9 @@
     "dockerfile": "../Dockerfile"
   },
   "workspaceFolder": "/app",
-  "forwardPorts": [3000, 8000],
+  "forwardPorts": [80, 8000],
   "portsAttributes": {
-    "3000": {
+    "80": {
       "label": "Frontend (React)",
       "onAutoForward": "notify"
     },

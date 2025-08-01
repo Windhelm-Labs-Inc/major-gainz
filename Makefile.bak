@@ -8,13 +8,13 @@ endif
 
 # Ports can be overridden: `make dev BACKEND_PORT=8001`
 BACKEND_PORT ?= 8000
-FRONTEND_PORT ?= 8080
+FRONTEND_PORT ?= 80
 
 # --- Environment Sync Functions ------------------------------------------
 
 # Sync top-level .env to service-specific .env files
-# sync-env target has been deprecated
-
+sync-env:
+	@echo "Not Syncing top-level .env to services..."
 	
 # @if [ -f .env ]; then \
 # 	echo "# Auto-generated from top-level .env - DO NOT EDIT MANUALLY" > services/backend/.env; \
@@ -34,7 +34,7 @@ FRONTEND_PORT ?= 8080
 # --- Backend --------------------------------------------------------------
 
 backend-dev:
-	cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)
+	cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)
 
 # --- Frontend -------------------------------------------------------------
 
@@ -45,16 +45,16 @@ frontend-build:
 	cd services/frontend && npm run build
 
 frontend-dev:
-	cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0
+	cd services/frontend && npm run dev -- --port $(FRONTEND_PORT)
 
 frontend-dev-secure:
-	cd services/frontend && npm run dev-secure -- --port $(FRONTEND_PORT) --host 0.0.0.0
+	cd services/frontend && npm run dev-secure -- --port $(FRONTEND_PORT)
 
 # --- Combined Dev ---------------------------------------------------------
 # Starts backend (in background) then the frontend dev server.
 # Ctrl+C will stop both (frontend sends INT; backend trap handled by make).
 
-dev: frontend-install
+dev: sync-env frontend-install
 	# Run backend + frontend with proper signal handling
 	bash -c '\
 	  set -e; \
@@ -70,21 +70,21 @@ dev: frontend-install
 	  }; \
 	  trap cleanup INT TERM EXIT; \
 	  echo "Starting backend..."; \
-	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
+	  (cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)) & \
 	  BACK_PID=$$!; \
 	  echo "Waiting for backend to start..."; \
 	  sleep 2; \
 	  echo "Starting frontend..."; \
 	  echo "Backend PID: $$BACK_PID"; \
-	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT)"; \
-	  echo "Backend: http://0.0.0.0:$(BACKEND_PORT)"; \
+	  echo "Frontend: http://localhost:$(FRONTEND_PORT)"; \
+	  echo "Backend: http://localhost:$(BACKEND_PORT)"; \
 	  echo ""; \
 	  echo "Press Ctrl+C to stop both services"; \
 	  echo ""; \
-	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0; \
+	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT); \
 	'
 
-dev-secure: frontend-install
+dev-secure: sync-env frontend-install
 	# SECURE: Build + serve bundled files (no source exposure)
 	bash -c '\
 	  set -e; \
@@ -102,21 +102,21 @@ dev-secure: frontend-install
 	  echo "Building frontend securely..."; \
 	  (cd services/frontend && npm run build); \
 	  echo "Starting backend..."; \
-	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
+	  (cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)) & \
 	  BACK_PID=$$!; \
 	  echo "Waiting for backend to start..."; \
 	  sleep 2; \
 	  echo "Starting SECURE frontend (bundled only)..."; \
 	  echo "Backend PID: $$BACK_PID"; \
-	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT)"; \
-	  echo "Backend: http://0.0.0.0:$(BACKEND_PORT)"; \
+	  echo "Frontend: http://localhost:$(FRONTEND_PORT)"; \
+	  echo "Backend: http://localhost:$(BACKEND_PORT)"; \
 	  echo ""; \
 	  echo "Press Ctrl+C to stop both services"; \
 	  echo ""; \
-	  (cd services/frontend && npm run preview -- --port $(FRONTEND_PORT) --host 0.0.0.0); \
+	  (cd services/frontend && npm run preview -- --port $(FRONTEND_PORT)); \
 	'
 
-.PHONY: backend-dev frontend-install frontend-build frontend-dev frontend-dev-secure dev dev-secure
+.PHONY: backend-dev frontend-install frontend-build frontend-dev frontend-dev-secure dev dev-secure sync-env
 
 # Run backend Python tests via Poetry / pytest
 backend-tests:
@@ -132,13 +132,15 @@ backend-rebuild-db:
 
 .PHONY: backend-rebuild-db 
 
-# Note -temporarily removing, as we would need new scripts given .env changes # Build and run using Docker script (with volume mounts)
-# docker-dev:
-# 	./docker-build-and-run.sh
+# Build and run using Docker script (with volume mounts)
+docker-dev: sync-env
+	./docker-build-and-run.sh
 
-.PHONY: docker-dev docker-dev-internal
+
+.PHONY: docker-dev 
 
 # Run using Docker Compose
+docker-compose-dev: sync-env
 	docker compose up --build
 
 .PHONY: docker-compose-dev

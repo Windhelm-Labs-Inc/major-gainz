@@ -26,7 +26,10 @@ COPY . .
 
 # Install Python dependencies for backend
 WORKDIR /app/services/backend
-RUN poetry install 
+# Install Python deps without relying on existing poetry.lock (may be excluded by .dockerignore)
+RUN rm -f poetry.lock \
+    && poetry lock --no-interaction \
+    && poetry install --no-interaction --no-root 
 
 # Install Node.js dependencies for frontend
 WORKDIR /app/services/frontend
@@ -38,18 +41,46 @@ RUN mkdir -p /app/services/backend/logs
 # Return to project root
 WORKDIR /app
 
-# Expose only the frontend port - backend is internal only
-EXPOSE 3000
+# Azure provides the port to listen on via WEBSITES_PORT
 
-# Set environment variables for ports (matching Makefile defaults)
-ENV BACKEND_PORT=8000
-ENV FRONTEND_PORT=3000
-# Set Docker environment flag for internal backend URL
-ENV DOCKER_ENV=true
-ENV VITE_BACKEND_URL=http://127.0.0.1:8000
-# Force IPv4 to avoid networking issues
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PORT=${WEBSITES_PORT:-8080}
 
-# Use the Docker-specific command that hides backend internally
-CMD ["make", "docker-dev-internal"] 
+# Build frontend for production
+WORKDIR /app/services/frontend
+RUN npm run build
+
+# Expose only the frontend port (public access)
+EXPOSE $PORT
+
+# Create startup script
+RUN echo '#!/bin/sh\n\
+set -e\n\
+echo "Starting backend server..."\n\
+cd /app/services/backend\n\
+poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000 &\n\
+BACKEND_PID=$!\n\
+echo "Backend started with PID: $BACKEND_PID"\n\
+\n\
+echo "Starting frontend server..."\n\
+cd /app/services/frontend\n\
+npm run preview -- --host 0.0.0.0 --port $PORT &\n\
+FRONTEND_PID=$!\n\
+echo "Frontend started with PID: $FRONTEND_PID"\n\
+\n\
+# Function to handle shutdown\n\
+cleanup() {\n\
+    echo "Shutting down services..."\n\
+    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true\n\
+    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null || true\n\
+    echo "Services stopped."\n\
+}\n\
+\n\
+# Set trap for cleanup on exit\n\
+trap cleanup TERM INT\n\
+\n\
+# Wait for both processes\n\
+wait $FRONTEND_PID $BACKEND_PID\n\
+' > /start.sh && chmod +x /start.sh
+
+# Start both backend and frontend servers
+CMD ["/start.sh"]

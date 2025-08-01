@@ -25,7 +25,7 @@ interface ReturnsStats {
   dailyReturns: number[] // 14 days of daily simple returns
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork, portfolio, scratchpadContext }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork: _hederaNetwork, portfolio, scratchpadContext }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -37,10 +37,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork,
   const [inputValue, setInputValue] = useState('')
 
   // Lazy-initialised agent executor instance
-  const [agentExecutor, setAgentExecutor] = useState<any>(null)
+  const [_agentExecutor, setAgentExecutor] = useState<any>(null)
   
   // Store returns statistics
-  const [returnsStats, setReturnsStats] = useState<ReturnsStats[]>([])
+  const [_returnsStats, setReturnsStats] = useState<ReturnsStats[]>([])
 
   // Track the last scratchpad content that was sent to the agent
   const lastSentScratchpad = useRef<string>('')
