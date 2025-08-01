@@ -22,9 +22,10 @@ export default defineConfig({
   
   // DEV SERVER: Restricted (only for fast development)
   server: {
-    port: 3000,
+    port: 8080,
+    allowedHosts: 'all',
     host: '0.0.0.0',
-    open: true,
+    open: false,
     fs: {
       strict: true,
       allow: ['src', 'public'], // Minimal for dev only
@@ -43,17 +44,18 @@ export default defineConfig({
   
   // PREVIEW SERVER: Serves built files only (SECURE!)
   preview: {
-    port: 3000,
+    port: 8080,
+    allowedHosts: ['app.trenchtrenchtesttest.dev', 'localhost', '127.0.0.1'],
     host: '0.0.0.0',
-    open: true,
+    open: false,
     proxy: {
-      '/ohlcv': 'http://localhost:8000',
-      '/tokens': 'http://localhost:8000',
-      '/portfolio': 'http://localhost:8000', 
-      '/refresh': 'http://localhost:8000',
-      '/token_holdings': 'http://localhost:8000',
-      '/defi': 'http://localhost:8000',
-      '/chat': 'http://localhost:8000'
+      '/ohlcv': 'http://127.0.0.1:8000',
+      '/tokens': 'http://127.0.0.1:8000',
+      '/portfolio': 'http://127.0.0.1:8000', 
+      '/refresh': 'http://127.0.0.1:8000',
+      '/token_holdings': 'http://127.0.0.1:8000',
+      '/defi': 'http://127.0.0.1:8000',
+      '/chat': 'http://127.0.0.1:8000'
     }
   },
   

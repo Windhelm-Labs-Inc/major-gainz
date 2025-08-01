@@ -4,16 +4,16 @@ services:
   app:
     build: .
     ports:
-      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"  # Frontend port
-      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"    # Backend port
-    env_file:
-      - .env  # Load environment variables from top-level .env file
+      - "8080:8080"  # Frontend port (host 8080 → container 8080)
+    #- "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"    # Backend port
+    # env_file:
+      # - .env  # Load environment variables from top-level .env file
     volumes:
       # Mount logs directory for persistence
       - ./services/backend/logs:/app/services/backend/logs
       # Mount the top-level .env file for runtime changes
-      - ./.env:/app/.env
+      # - ./.env:/app/.env
       # Optional: Mount source code for development (uncomment for live reload)
       # - ./services:/app/services
     working_dir: /app
-    command: make dev 
+    # command: make dev 
