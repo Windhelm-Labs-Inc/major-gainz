@@ -1,10 +1,9 @@
 import React, { useState } from 'react'
 import { ethers } from 'ethers'
 import detectEthereumProvider from '@metamask/detect-provider'
-// Load settings once
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore – json import
-import settingsJson from '../../appSettings.json'
+// Environment variables bundled at build time
+declare const __WALLETCONNECT_PROJECT_ID__: string
+declare const __HEDERA_NETWORK__: string
 // HashConnect is imported dynamically to avoid increasing the initial bundle size when users only use MetaMask.
 
 // Hedera EVM chain IDs
@@ -154,16 +153,13 @@ const WalletConnection: React.FC<WalletConnectionProps> = ({
       ])
       /* eslint-enable @typescript-eslint/ban-ts-comment */
 
-      // Load settings for project id
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore – json module import
-      const settings = (await import('../../appSettings.json')).default as any
-      const projectId = settings.WALLETCONNECT_PROJECT_ID && settings.WALLETCONNECT_PROJECT_ID !== 'YOUR_PROJECT_ID_HERE'
-        ? settings.WALLETCONNECT_PROJECT_ID
+      // Use bundled environment variable for project id
+      const projectId = __WALLETCONNECT_PROJECT_ID__ && __WALLETCONNECT_PROJECT_ID__ !== 'YOUR_PROJECT_ID_HERE'
+        ? __WALLETCONNECT_PROJECT_ID__
         : undefined
 
       if (!projectId) {
-        alert('HashPack connection requires a WalletConnect Project ID.\nPlease edit appSettings.json → WALLETCONNECT_PROJECT_ID and restart the app.')
+        alert('HashPack connection requires a WalletConnect Project ID.\nPlease configure the environment variable and rebuild the app.')
         return
       }
 
