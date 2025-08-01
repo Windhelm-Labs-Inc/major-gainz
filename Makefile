@@ -34,7 +34,7 @@ FRONTEND_PORT ?= 8080
 # --- Backend --------------------------------------------------------------
 
 backend-dev:
-	cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)
+	cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)
 
 # --- Frontend -------------------------------------------------------------
 
@@ -45,10 +45,10 @@ frontend-build:
 	cd services/frontend && npm run build
 
 frontend-dev:
-	cd services/frontend && npm run dev -- --port $(FRONTEND_PORT)
+	cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0
 
 frontend-dev-secure:
-	cd services/frontend && npm run dev-secure -- --port $(FRONTEND_PORT)
+	cd services/frontend && npm run dev-secure -- --port $(FRONTEND_PORT) --host 0.0.0.0
 
 # --- Combined Dev ---------------------------------------------------------
 # Starts backend (in background) then the frontend dev server.
@@ -70,18 +70,18 @@ dev: frontend-install
 	  }; \
 	  trap cleanup INT TERM EXIT; \
 	  echo "Starting backend..."; \
-	  (cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)) & \
+	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
 	  BACK_PID=$$!; \
 	  echo "Waiting for backend to start..."; \
 	  sleep 2; \
 	  echo "Starting frontend..."; \
 	  echo "Backend PID: $$BACK_PID"; \
-	  echo "Frontend: http://localhost:$(FRONTEND_PORT)"; \
-	  echo "Backend: http://localhost:$(BACKEND_PORT)"; \
+	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT)"; \
+	  echo "Backend: http://0.0.0.0:$(BACKEND_PORT)"; \
 	  echo ""; \
 	  echo "Press Ctrl+C to stop both services"; \
 	  echo ""; \
-	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT); \
+	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0; \
 	'
 
 dev-secure: frontend-install
@@ -102,18 +102,18 @@ dev-secure: frontend-install
 	  echo "Building frontend securely..."; \
 	  (cd services/frontend && npm run build); \
 	  echo "Starting backend..."; \
-	  (cd services/backend && poetry run uvicorn app.main:app --reload --port $(BACKEND_PORT)) & \
+	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
 	  BACK_PID=$$!; \
 	  echo "Waiting for backend to start..."; \
 	  sleep 2; \
 	  echo "Starting SECURE frontend (bundled only)..."; \
 	  echo "Backend PID: $$BACK_PID"; \
-	  echo "Frontend: http://localhost:$(FRONTEND_PORT)"; \
-	  echo "Backend: http://localhost:$(BACKEND_PORT)"; \
+	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT)"; \
+	  echo "Backend: http://0.0.0.0:$(BACKEND_PORT)"; \
 	  echo ""; \
 	  echo "Press Ctrl+C to stop both services"; \
 	  echo ""; \
-	  (cd services/frontend && npm run preview -- --port $(FRONTEND_PORT)); \
+	  (cd services/frontend && npm run preview -- --port $(FRONTEND_PORT) --host 0.0.0.0); \
 	'
 
 .PHONY: backend-dev frontend-install frontend-build frontend-dev frontend-dev-secure dev dev-secure
@@ -136,11 +136,9 @@ backend-rebuild-db:
 # docker-dev:
 # 	./docker-build-and-run.sh
 
-
-.PHONY: docker-dev 
+.PHONY: docker-dev docker-dev-internal
 
 # Run using Docker Compose
-docker-compose-dev:
 	docker compose up --build
 
 .PHONY: docker-compose-dev

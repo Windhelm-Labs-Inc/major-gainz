@@ -53,4 +53,5 @@ async def startup_event():
     await refresh_all_tokens()
 
 
-# To run: `uvicorn app.main:app --reload` 
+# To run: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+# Docker: `uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --loop asyncio` 
