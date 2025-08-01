@@ -191,7 +191,9 @@ function App() {
               console.log('[App] Bonzo health_factor:', defiData.bonzo_finance.health_factor)
             }
             
-            setDefiData(defiData)
+            let merged = defiData
+            // pools might be fetched slightly later; they will be injected after pool fetches
+            setDefiData(merged)
           } catch (jsonError) {
             console.error('[App] DeFi response parse error:', jsonError)
             const responseText = await defiRes.text()
@@ -214,7 +216,10 @@ function App() {
           try {
             const poolsData = await saucerPoolsRes.json()
             console.log('[App] SaucerSwap pools loaded:', poolsData)
-            setSaucerPools(poolsData.pools || [])
+            const sp = poolsData.pools || []
+            setSaucerPools(sp)
+            // attach into defiData for debug panel
+            setDefiData(prev => ({ ...(prev||{}), all_saucerswap_pools: sp }))
           } catch (err) {
             console.error('[App] SaucerSwap pools parse error', err)
           }
@@ -226,7 +231,9 @@ function App() {
           try {
             const bpools = await bonzoPoolsRes.json()
             console.log('[App] Bonzo pools loaded:', bpools)
-            setBonzoPools(bpools.pools || [])
+            const bp = bpools.pools || []
+            setBonzoPools(bp)
+            setDefiData(prev => ({ ...(prev||{}), all_bonzo_pools: bp }))
           } catch (err) {
             console.error('[App] Bonzo pools parse error', err)
           }
