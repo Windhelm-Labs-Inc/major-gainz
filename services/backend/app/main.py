@@ -27,14 +27,11 @@ app = FastAPI(title="Hedera Token OHLCV API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://0.0.0.0:3000",      # Local development
-        "http://0.0.0.0:3001",      # Alt port
-        "http://127.0.0.1:3000",    # Docker internal localhost
-        "http://127.0.0.1:3001",    # Docker internal localhost alt port
-        "http://localhost:3000",    # Docker internal localhost
-        "http://localhost:3001",    # Docker internal localhost alt port
-        "http://host.docker.internal:3000",  # Docker Bindings
-        "http://host.docker.internal:3001",  # Docker alt port
+        "http://localhost:8080",     # Local development
+        "http://127.0.0.1:8080",    # Container internal communication
+        "http://0.0.0.0:8080",      
+        "http://host.docker.internal:8080",  # Docker Bindings
+        "*",  # Allow all origins for Azure deployment
     ],
     allow_credentials=True,
     allow_methods=["*"],
