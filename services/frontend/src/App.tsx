@@ -1,8 +1,9 @@
 // Environment variables bundled at build time
 declare const __WALLETCONNECT_PROJECT_ID__: string
 declare const __HEDERA_NETWORK__: string
-import { useState, lazy, Suspense, useEffect, useCallback } from 'react'
+import { useState, lazy, Suspense, useEffect, useCallback, useMemo } from 'react'
 import type { Portfolio, Holding } from './types/portfolio'
+import { filterPortfolioTokens, shouldExcludeFromHolderAnalysis } from './utils/defiTokenFilter'
 import NetworkSelector from './components/NetworkSelector'
 import WalletConnection from './components/WalletConnection'
 import AddressInput from './components/AddressInput'
@@ -27,6 +28,8 @@ function App() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false)
   const [selectedToken, setSelectedToken] = useState<Holding | null>(null)
+  const [defiTokens, setDefiTokens] = useState<Holding[]>([])
+  const [filterResults, setFilterResults] = useState<any[]>([])
   const [defiData, setDefiData] = useState<any>(null)
   const [isLoadingDefi, setIsLoadingDefi] = useState(false)
   const [defiPanelWidth, setDefiPanelWidth] = useState(400)
@@ -71,10 +74,20 @@ function App() {
     // reset portfolio and defi data when address changes
     setPortfolio(null)
     setDefiData(null)
+    setDefiTokens([])
+    setFilterResults([])
   }
 
   const handleTokenSelect = (holding: Holding) => {
     console.log('[App] Token selected:', holding.symbol)
+    
+    // Check if this is a DeFi token that should be excluded from holder analysis
+    if (shouldExcludeFromHolderAnalysis(holding)) {
+      console.warn('[App] DeFi token excluded from holder analysis:', holding.symbol)
+      alert(`${holding.symbol} is a DeFi token and cannot be used for holder analysis. DeFi tokens are displayed separately below.`)
+      return
+    }
+    
     setSelectedToken(holding)
     // Update scratchpad with selected token
     updateSelectedToken(holding)
@@ -118,7 +131,33 @@ function App() {
       console.log('[App] Portfolio loaded:', portfolioData)
       // Post-process to fetch missing prices
       const enriched = await enrichMissingPrices(portfolioData)
-      setPortfolio(enriched)
+      
+      // Apply DeFi filtering to separate regular tokens from DeFi tokens
+      const { regularHoldings, defiTokens, filterResults } = filterPortfolioTokens(enriched)
+      
+      console.log('[App] Portfolio filtering results:', {
+        total: enriched.holdings.length,
+        regular: regularHoldings.length,
+        defi: defiTokens.length,
+        filtered: defiTokens.map(t => t.symbol)
+      })
+      
+      // Update portfolio to show only regular holdings
+      const filteredPortfolio = {
+        ...enriched,
+        holdings: regularHoldings,
+        totalUsd: regularHoldings.reduce((sum, h) => sum + h.usd, 0)
+      }
+      
+      // Recalculate percentages for regular holdings only
+      filteredPortfolio.holdings = filteredPortfolio.holdings.map(h => ({
+        ...h,
+        percent: filteredPortfolio.totalUsd ? (100 * h.usd / filteredPortfolio.totalUsd) : 0
+      }))
+      
+      setPortfolio(filteredPortfolio)
+      setDefiTokens(defiTokens)
+      setFilterResults(filterResults)
       
       // Handle DeFi response
       if (defiRes.ok) {
@@ -293,14 +332,38 @@ function App() {
           </button>
 
           {portfolio && portfolio.holdings.length > 0 && (
-            <div style={{ 
-              display: 'flex', 
-              gap: '2rem', 
-              alignItems: 'flex-start', 
-              marginTop: '2rem',
-              flexWrap: 'wrap',
-              justifyContent: 'center'
-            }}>
+            <>
+              {/* Portfolio Status */}
+              <div style={{
+                marginTop: '1.5rem',
+                padding: '0.75rem 1rem',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '6px',
+                border: '1px solid #e9ecef',
+                textAlign: 'center'
+              }}>
+                <span style={{ 
+                  fontSize: '0.9rem',
+                  color: '#495057'
+                }}>
+                  📊 Showing {portfolio.holdings.length} regular tokens
+                  {defiTokens.length > 0 && (
+                    <span style={{ color: '#6c757d' }}>
+                      {' '} • {defiTokens.length} DeFi tokens filtered out
+                    </span>
+                  )}
+                  {' '} • Total value: ${portfolio.totalUsd.toFixed(2)}
+                </span>
+              </div>
+
+              <div style={{ 
+                display: 'flex', 
+                gap: '2rem', 
+                alignItems: 'flex-start', 
+                marginTop: '1.5rem',
+                flexWrap: 'wrap',
+                justifyContent: 'center'
+              }}>
               <Suspense fallback={<div className="loading">Rendering chart</div>}>
                 <PortfolioChart 
                   data={portfolio.holdings} 
@@ -318,9 +381,148 @@ function App() {
                   />
                 })()}
               </Suspense>
-            </div>
+              </div>
+            </>
           )}
         </div>
+
+        {/* DeFi Holdings Section */}
+        {defiTokens.length > 0 && (
+          <div className="defi-section" style={{ 
+            marginTop: '3rem',
+            padding: '2rem',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            border: '1px solid #e9ecef'
+          }}>
+            <h2 style={{ 
+              color: '#495057',
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              🏛️ DeFi Holdings
+              <span style={{ 
+                fontSize: '0.8rem',
+                fontWeight: 'normal',
+                color: '#6c757d',
+                backgroundColor: '#e9ecef',
+                padding: '0.2rem 0.5rem',
+                borderRadius: '12px'
+              }}>
+                {defiTokens.length} tokens filtered
+              </span>
+            </h2>
+            <p style={{ 
+              color: '#6c757d', 
+              marginBottom: '1.5rem',
+              fontSize: '0.9rem'
+            }}>
+              These tokens were identified as DeFi positions and are excluded from regular token analysis.
+            </p>
+            
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '1rem'
+            }}>
+              {defiTokens.map((token, index) => {
+                const analysis = filterResults.find(r => r.symbol === token.symbol)
+                return (
+                  <div key={`${token.tokenId}-${index}`} style={{
+                    padding: '1rem',
+                    backgroundColor: 'white',
+                    borderRadius: '6px',
+                    border: '1px solid #dee2e6',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <h4 style={{ 
+                        margin: 0,
+                        color: '#212529',
+                        fontSize: '1.1rem'
+                      }}>
+                        {token.symbol}
+                      </h4>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        padding: '0.2rem 0.4rem',
+                        borderRadius: '8px',
+                        backgroundColor: analysis?.confidence && analysis.confidence > 0.9 
+                          ? '#d4edda' : analysis?.confidence && analysis.confidence > 0.8 
+                          ? '#fff3cd' : '#f8d7da',
+                        color: analysis?.confidence && analysis.confidence > 0.9 
+                          ? '#155724' : analysis?.confidence && analysis.confidence > 0.8 
+                          ? '#856404' : '#721c24',
+                        border: `1px solid ${analysis?.confidence && analysis.confidence > 0.9 
+                          ? '#c3e6cb' : analysis?.confidence && analysis.confidence > 0.8 
+                          ? '#ffeaa7' : '#f5c6cb'}`
+                      }}>
+                        {analysis?.confidence ? `${(analysis.confidence * 100).toFixed(0)}%` : 'N/A'}
+                      </span>
+                    </div>
+                    
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <div style={{ 
+                        fontSize: '0.9rem',
+                        color: '#495057'
+                      }}>
+                        Amount: {token.amount.toLocaleString()}
+                      </div>
+                      <div style={{ 
+                        fontSize: '0.9rem',
+                        color: '#28a745',
+                        fontWeight: '500'
+                      }}>
+                        ${token.usd.toFixed(2)}
+                      </div>
+                    </div>
+                    
+                    {analysis && (
+                      <div style={{ 
+                        fontSize: '0.8rem',
+                        color: '#6c757d',
+                        marginTop: '0.5rem',
+                        paddingTop: '0.5rem',
+                        borderTop: '1px solid #e9ecef'
+                      }}>
+                        <div style={{ marginBottom: '0.3rem' }}>
+                          <strong>Category:</strong> {analysis.suggestedCategory || 'Unknown'}
+                        </div>
+                        <div>
+                          <strong>Reason:</strong> {analysis.reasons?.[0] || 'DeFi token detected'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            
+            <div style={{ 
+              marginTop: '1.5rem',
+              padding: '1rem',
+              backgroundColor: '#e3f2fd',
+              borderRadius: '6px',
+              border: '1px solid #bbdefb'
+            }}>
+              <p style={{ 
+                margin: 0,
+                fontSize: '0.85rem',
+                color: '#1565c0'
+              }}>
+                💡 <strong>Note:</strong> DeFi tokens are automatically excluded from token holder analysis to ensure accurate results. 
+                These tokens represent liquidity positions, staked assets, or other DeFi protocols rather than regular token holdings.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* AI Chat Section */}
         <div className="chat-section">

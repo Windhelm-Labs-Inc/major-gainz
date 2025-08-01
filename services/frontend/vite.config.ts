@@ -50,7 +50,7 @@ export default defineConfig({
   // PREVIEW SERVER: Serves built files only (SECURE!)
   preview: {
     port: 8080,
-    allowedHosts: ['app.trenchtrenchtesttest.dev', 'localhost', '127.0.0.1'],
+    allowedHosts: 'all', // Allow all hosts for Docker development
     host: '0.0.0.0',
     open: false,
     proxy: {
