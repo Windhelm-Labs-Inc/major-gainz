@@ -138,7 +138,15 @@ backend-rebuild-db:
 
 .PHONY: docker-dev docker-dev-internal
 
-# Run using Docker Compose
-	docker compose up --build
+# Run using Docker Compose (base only)
+
+docker-compose-dev:
+	docker compose -f docker-compose.yml up --build
 
 .PHONY: docker-compose-dev
+
+# Run using base + local overrides (.env, live mounts)
+docker-compose-local:
+	docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+
+.PHONY: docker-compose-local
