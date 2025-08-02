@@ -37,13 +37,6 @@ HEDERA_BASE_URL = "https://mainnet-public.mirrornode.hedera.com/api/v1"
 HEDERA_ACCOUNTS_ENDPOINT = f"{HEDERA_BASE_URL}/accounts"
 HEDERA_TOKENS_ENDPOINT = f"{HEDERA_BASE_URL}/tokens"
 
-# --- Balance Thresholds ---
-# Minimum balance to be included in the results
-MIN_BALANCE_THRESHOLDS = {
-    "HBAR": 1_000_000_000,  # 10 HBAR
-    "SAUCE": 1,
-    "KARATE": 1
-}
 
 # --- Progress Reporting ---
 PROGRESS_REPORT_INTERVAL = 20  # Print progress every 20 API requests
