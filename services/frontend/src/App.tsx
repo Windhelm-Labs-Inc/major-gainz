@@ -218,7 +218,6 @@ function App() {
             console.log('[App] SaucerSwap pools loaded:', poolsData)
             const sp = poolsData.pools || []
             setSaucerPools(sp)
-            // attach into defiData for debug panel
             setDefiData(prev => ({ ...(prev||{}), all_saucerswap_pools: sp }))
           } catch (err) {
             console.error('[App] SaucerSwap pools parse error', err)
@@ -740,7 +739,7 @@ function App() {
                 </div>
                 
                 {defiProtocolsExpanded && !defiData.error && (
-                  <div>
+                  <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
                     {/* Debug DeFi Data Structure */}
                     <div style={{ 
                       marginBottom: '1.5rem',
@@ -767,7 +766,13 @@ function App() {
                         maxHeight: '150px',
                         overflow: 'auto'
                       }}>
-                        <pre>{JSON.stringify(defiData, null, 2)}</pre>
+                        {(() => {
+                        const cleaned = { ...defiData } as any
+                        // remove huge arrays for preview
+
+                        const pretty = JSON.stringify(cleaned, null, 2)
+                        return <pre>{pretty.length>4000? pretty.slice(0,4000)+"\n... truncated": pretty}</pre>
+                      })()}
                       </div>
                     </div>
 
