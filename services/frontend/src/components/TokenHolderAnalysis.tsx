@@ -95,7 +95,7 @@ const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onCl
   }
 
   const formatAccountId = (accountId: string) => {
-    return `${accountId.slice(0, 8)}...${accountId.slice(-6)}`
+    return accountId
   }
 
   const getRankColor = (percentile: number) => {
