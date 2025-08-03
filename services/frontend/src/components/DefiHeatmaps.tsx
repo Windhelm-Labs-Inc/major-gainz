@@ -14,30 +14,32 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
   const [selectedPool, setSelectedPool] = useState<PoolData | null>(null)
   const [hoveredPool, setHoveredPool] = useState<string | null>(null)
 
-  // Expand dataset to show more pools by including all available data
+  // Filter and sort real pools only - NO SYNTHETIC DATA
   const allPools = useMemo(() => {
-    const filtered = pools.filter(p => 
+    // Keep only pools with meaningful data
+    const realPools = pools.filter(p => 
       (p.apy !== undefined && p.apy !== null && p.apy > 0) || 
       (p.userStakedUsd && p.userStakedUsd > 0) ||
       (p.tvlUsd && p.tvlUsd > 0)
     )
-    // Pad to minimum 12 entries for better grid visualization
-    const padding = Math.max(0, 12 - filtered.length)
-    const synthetic = Array.from({ length: padding }, (_, i) => ({
-      platform: 'SYNTHETIC' as const,
-      poolId: `synthetic-${i}`,
-      name: `Pool ${String.fromCharCode(65 + i)}`, // A, B, C...
-      apy: Math.random() * 25 + 2, // 2-27% APY
-      tvlUsd: Math.random() * 1000000 + 50000, // 50K-1M TVL
-      userStakedUsd: Math.random() > 0.7 ? Math.random() * 10000 : 0,
-      extra: { synthetic: true }
-    }))
     
-    // Separate by platform for organized display
-    const saucer = [...filtered.filter(p => p.platform === 'SAUCERSWAP'), ...synthetic.slice(0, Math.floor(padding * 0.6))]
-    const bonzo = [...filtered.filter(p => p.platform === 'BONZO'), ...synthetic.slice(Math.floor(padding * 0.6))]
+    // Sort: user positions first, then by APY, then by TVL
+    realPools.sort((a, b) => {
+      const stakeA = a.userStakedUsd || 0
+      const stakeB = b.userStakedUsd || 0
+      if (stakeA !== stakeB) return stakeB - stakeA // User positions first
+      
+      const apyA = a.apy || 0
+      const apyB = b.apy || 0
+      if (apyA !== apyB) return apyB - apyA // Highest APY next
+      
+      const tvlA = a.tvlUsd || 0
+      const tvlB = b.tvlUsd || 0
+      return tvlB - tvlA // Highest TVL last
+    })
     
-    return [...saucer, ...bonzo].slice(0, 20) // Cap at 20
+    // Return only real pools, no synthetic padding
+    return realPools
   }, [pools])
 
   const maxApy = Math.max(...allPools.map(p => p.apy || 0), 25)

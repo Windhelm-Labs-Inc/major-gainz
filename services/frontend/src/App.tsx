@@ -80,7 +80,7 @@ function App() {
       })
     }
 
-    // SaucerSwap pools (flatten v1/v2/farms)
+    // SaucerSwap pools - both user positions and all available pools
     if (defiData?.saucer_swap) {
       const ss = defiData.saucer_swap
       
@@ -112,7 +112,51 @@ function App() {
       })
     }
 
-    // Bonzo pools (markets)
+    // Add all available SaucerSwap pools (not just user positions)
+    if (defiData?.filtered_saucerswap_pools) {
+      const allPools = defiData.filtered_saucerswap_pools
+      
+      // V1 pools
+      ;(allPools.v1 || []).forEach((pool: any) => {
+        const tokenA = pool.tokenA?.symbol || 'TokenA'
+        const tokenB = pool.tokenB?.symbol || 'TokenB'
+        const poolId = `all-v1-${pool.id}`
+        
+        // Skip if we already have this as a user position
+        const alreadyExists = all.some(p => p.poolId === pool.id?.toString())
+        if (!alreadyExists) {
+          push('SAUCERSWAP', { ...pool, poolId }, `${tokenA}/${tokenB} V1`)
+        }
+      })
+      
+      // V2 pools
+      ;(allPools.v2 || []).forEach((pool: any) => {
+        const tokenA = pool.tokenA?.symbol || pool.token0?.symbol || 'TokenA'
+        const tokenB = pool.tokenB?.symbol || pool.token1?.symbol || 'TokenB'
+        const fee = pool.fee ? ` (${(pool.fee/10000).toFixed(2)}%)` : ''
+        const poolId = `all-v2-${pool.id}`
+        
+        // Skip if we already have this as a user position
+        const alreadyExists = all.some(p => p.poolId === pool.id?.toString())
+        if (!alreadyExists) {
+          push('SAUCERSWAP', { ...pool, poolId }, `${tokenA}/${tokenB} V2${fee}`)
+        }
+      })
+      
+      // Farms
+      ;(allPools.farms || []).forEach((farm: any) => {
+        const farmId = `all-farm-${farm.id}`
+        
+        // Skip if we already have this as a user position
+        const alreadyExists = all.some(p => p.poolId === farm.id?.toString())
+        if (!alreadyExists) {
+          const name = farm.name || `Farm ${farm.id}`
+          push('SAUCERSWAP', { ...farm, poolId: farmId }, `🚜 ${name}`)
+        }
+      })
+    }
+
+    // Bonzo pools (markets) - user positions
     const bonzo = defiData?.bonzo_finance
     if (bonzo) {
       const toArr = (v: any): any[] => Array.isArray(v) ? v : v ? Object.values(v) : []
@@ -129,6 +173,25 @@ function App() {
         const symbol = m.symbol ?? m.token_symbol ?? 'Unknown'
         const amount = m.amount ? ` (${parseFloat(m.amount).toFixed(2)})` : ''
         push('BONZO', m, `🏦 Borrow ${symbol}${amount}`)
+      })
+    }
+
+    // Add all available Bonzo markets (not just user positions)
+    if (defiData?.all_bonzo_pools) {
+      ;(defiData.all_bonzo_pools || []).forEach((market: any) => {
+        const symbol = market.symbol || market.name || 'Unknown'
+        const marketId = `all-bonzo-${symbol}`
+        
+        // Skip if we already have this as a user position
+        const alreadyExists = all.some(p => 
+          p.extra?.symbol === symbol || p.name.includes(symbol)
+        )
+        
+        if (!alreadyExists) {
+          // Show as available market with APY info
+          const supplyApy = market.supply_apy ? ` ${market.supply_apy.toFixed(2)}%` : ''
+          push('BONZO', { ...market, poolId: marketId }, `📊 ${symbol} Market${supplyApy}`)
+        }
       })
     }
 
