@@ -21,11 +21,7 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
   // Separate allocated and unallocated pools - NO SYNTHETIC DATA
   const { allocatedPools, unallocatedPools } = useMemo(() => {
     // Keep only pools with meaningful data
-    const realPools = pools.filter(p => 
-      (p.apy !== undefined && p.apy !== null && p.apy > 0) || 
-      (p.userStakedUsd && p.userStakedUsd > 0) ||
-      (p.tvlUsd && p.tvlUsd > 0)
-    )
+    const realPools = pools
     
     // Separate allocated vs unallocated
     const allocated = realPools.filter(p => (p.userStakedUsd || 0) > 0)
@@ -51,7 +47,7 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
     
     return {
       allocatedPools: allocated,
-      unallocatedPools: unallocated.slice(0, poolCount - allocated.length)
+      unallocatedPools: unallocated.slice(0, Math.max(poolCount - allocated.length, 0))
     }
   }, [pools, poolCount, sortBy])
 
@@ -357,7 +353,7 @@ const MATLABHeatmapGrid: React.FC<MATLABHeatmapGridProps> = ({
             <div
               key={pool.poolId}
               onClick={() => onPoolClick(pool)}
-              onMouseEnter={() => onPoolHover(pool.poolId)}
+              onMouseEnter={() => onPoolHover(String(pool.poolId))}
               onMouseLeave={() => onPoolHover(null)}
               style={{
                 aspectRatio: '1',
