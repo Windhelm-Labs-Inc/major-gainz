@@ -14,12 +14,12 @@ import httpx
 from datetime import datetime
 
 from ..settings import (
-    HEDERA_TOKEN_ADDRESS_TO_SYMBOL,
+    TOKEN_ID_TO_SYMBOL as HEDERA_TOKEN_ADDRESS_TO_SYMBOL,
     logger,
 )
 
 from ..database import SessionLocal
-from .. import crud
+from .. import crud_saucerswap as crud
 
 Network = Literal["mainnet", "testnet"]
 
@@ -66,7 +66,7 @@ def _price_map_from_db(symbols: List[str]) -> Dict[str, float]:
         for sym in symbols:
             row = crud.get_latest_ohlcv(db, sym)
             if row:
-                price_map[sym] = row.close
+                                price_map[sym] = float(row.close_usd)
     finally:
         db.close()
     return price_map

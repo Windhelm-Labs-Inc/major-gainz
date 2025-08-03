@@ -231,3 +231,4 @@ test-results.xml
 
 **.*.env
 **/ohlcv.db
+**/*.bak

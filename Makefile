@@ -119,8 +119,11 @@ dev-secure: frontend-install
 .PHONY: backend-dev frontend-install frontend-build frontend-dev frontend-dev-secure dev dev-secure
 
 # Run backend Python tests via Poetry / pytest
-backend-tests:
-	cd services/backend && poetry run pytest tests/ -v
+backend-poetry-setup:
+	cd services/backend && (poetry env info --path >/dev/null 2>&1 || poetry env use $(shell which python3)) && poetry lock --no-interaction && poetry install --with dev --no-root --no-interaction
+
+backend-tests: backend-poetry-setup
+	cd services/backend && poetry run pytest -q
 
 .PHONY: backend-tests 
 

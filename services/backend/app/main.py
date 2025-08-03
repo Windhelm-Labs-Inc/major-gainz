@@ -15,7 +15,7 @@ print(f"DATABASE_URL: {repr(os.getenv('DATABASE_URL'))}")
 print("=" * 50)
 
 from .database import Base, engine
-from .crud import refresh_all_tokens
+from .crud_saucerswap import refresh_all_tokens
 # Import routers including new portfolio, defi, and chat
 from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi, chat
 

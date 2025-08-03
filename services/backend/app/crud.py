@@ -9,12 +9,14 @@ from sqlalchemy import func
 from .models import OHLCV
 import httpx
 
-from .settings import HEDERA_TOKEN_IDS, DEFAULT_DAYS, logger
-from .services.coingecko import fetch_ohlc, process_ohlc_list
+from .settings import DEFAULT_DAYS, logger
+
 
 
 async def update_token_data(db: Session, token: str, api_id: str):
-    """Ensure last `DEFAULT_DAYS` days are present for token."""
+    """Legacy CoinGecko path no longer supported."""
+    return  # Disabled
+
     existing_dates = {
         r.date for r in db.query(OHLCV.date).filter(OHLCV.token == token).all()
     }
@@ -53,7 +55,9 @@ async def update_token_data(db: Session, token: str, api_id: str):
         db.commit()
 
 
+# Legacy refresh_all_tokens disabled
 async def refresh_all_tokens():
+    return
     """Background routine that fetches & stores data for every token."""
     from .database import SessionLocal  # local import to avoid circular
 
