@@ -8,6 +8,8 @@ import NetworkSelector from './components/NetworkSelector'
 import WalletConnection from './components/WalletConnection'
 import AddressInput from './components/AddressInput'
 import ChatWindow from './components/ChatWindow'
+import DefiHeatmaps from './components/DefiHeatmaps'
+import type { PoolData } from './components/PoolDetailDrawer'
 import AddressDisplay from './components/AddressDisplay'
 import TokenHolderAnalysis from './components/TokenHolderAnalysis'
 import JsonExplorer from './components/JsonExplorer'
@@ -48,6 +50,43 @@ function App() {
   } = useScratchpad()
 
   const PortfolioChart = lazy(() => import('./components/PortfolioChart'))
+
+  // Build flat pool dataset for heat-map visualisations
+  const poolData: PoolData[] = useMemo(() => {
+    const all: PoolData[] = []
+
+    // Helper to safely push if value present
+    const push = (platform: 'SAUCERSWAP' | 'BONZO', raw: any, name: string) => {
+      all.push({
+        platform,
+        poolId: (raw?.poolId ?? raw?.id ?? raw?.address ?? name) as string,
+        name,
+        apy: raw?.apy ?? raw?.apr ?? raw?.rewardApy ?? raw?.supply_apy ?? raw?.variable_borrow_apy ?? undefined,
+        tvlUsd: raw?.tvl_usd ?? raw?.liquidityUSD ?? raw?.underlyingValueUSD ?? raw?.total_supply_usd ?? raw?.available_liquidity_usd ?? undefined,
+        userStakedUsd: raw?.myLiquidityUSD ?? raw?.myValueUSD ?? raw?.user_staked_usd ?? raw?.underlyingValueUSD ?? raw?.usd_value ?? undefined,
+        extra: raw
+      })
+    }
+
+    // SaucerSwap pools (flatten v1/v2/farms)
+    if (defiData?.saucer_swap) {
+      const ss = defiData.saucer_swap
+      ;(ss.pools_v1 || []).forEach((p: any) => push('SAUCERSWAP', p, `${p.tokenA ?? p.token0}/${p.tokenB ?? p.token1}`))
+      ;(ss.pools_v2 || []).forEach((p: any) => push('SAUCERSWAP', p, `${p.tokenA ?? p.token0}/${p.tokenB ?? p.token1}`))
+      ;(ss.farms || []).forEach((p: any) => push('SAUCERSWAP', p, p.name ?? 'Farm'))
+      ;(ss.vaults || []).forEach((p: any) => push('SAUCERSWAP', p, p.name ?? 'Vault'))
+    }
+
+    // Bonzo pools (markets)
+    const bonzo = defiData?.bonzo_finance
+    if (bonzo) {
+      const toArr = (v: any): any[] => Array.isArray(v) ? v : v ? Object.values(v) : []
+      toArr(bonzo.supplied).forEach((m: any) => push('BONZO', m, m.symbol ?? m.token_symbol))
+      toArr(bonzo.borrowed).forEach((m: any) => push('BONZO', m, m.symbol ?? m.token_symbol))
+    }
+
+    return all
+  }, [defiData])
 
   const handleWalletConnect = (walletType: string, address: string) => {
     console.log('[App] Wallet connected:', walletType, address)
@@ -218,7 +257,7 @@ function App() {
             console.log('[App] SaucerSwap pools loaded:', poolsData)
             const sp = poolsData.pools || []
             setSaucerPools(sp)
-            setDefiData(prev => ({ ...(prev||{}), filtered_saucerswap_pools: sp }))
+            setDefiData((prev: any) => ({ ...(prev||{}), filtered_saucerswap_pools: sp }))
           } catch (err) {
             console.error('[App] SaucerSwap pools parse error', err)
           }
@@ -232,7 +271,7 @@ function App() {
             console.log('[App] Bonzo pools loaded:', bpools)
             const bp = bpools.pools || []
             setBonzoPools(bp)
-            setDefiData(prev => ({ ...(prev||{}), all_bonzo_pools: bp }))
+            setDefiData((prev: any) => ({ ...(prev||{}), all_bonzo_pools: bp }))
           } catch (err) {
             console.error('[App] Bonzo pools parse error', err)
           }
@@ -1393,6 +1432,11 @@ function App() {
               </div>
             )}
           </div>
+        )}
+
+        {/* New DeFi Heatmaps */}
+        {poolData.length > 0 && (
+          <DefiHeatmaps pools={poolData} initiallyOpen={false} />
         )}
 
         {/* AI Chat Section */}
