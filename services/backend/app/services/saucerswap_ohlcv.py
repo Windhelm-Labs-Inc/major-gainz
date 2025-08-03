@@ -33,6 +33,12 @@ from ..settings import (
 # ---------------------------------------------------------------------------
 
 
+# Token-ID aliases required by SaucerSwap API
+# Map logical Hedera token IDs ➜ token IDs that the SaucerSwap endpoint understands.
+SAUCER_TOKEN_ID_ALIAS: dict[str, str] = {
+    "0.0.0": "0.0.1456986",  # HBAR native ➜ WHBAR wrapped
+}
+
 class SaucerSwapOHLCVService:
     """Light-weight client for SaucerSwap OHLCV endpoints."""
 
@@ -72,7 +78,12 @@ class SaucerSwapOHLCVService:
         end_ts = int(datetime.now(timezone.utc).timestamp())
         start_ts = end_ts - days * 24 * 3600
 
-        url = f"{self.BASE_URL}/tokens/prices/{token_id}"
+        # Use alias if SaucerSwap does not support the requested id directly
+        effective_id = SAUCER_TOKEN_ID_ALIAS.get(token_id, token_id)
+        if effective_id != token_id:
+            logger.debug(f"Using SaucerSwap token alias: {token_id} → {effective_id}")
+
+        url = f"{self.BASE_URL}/tokens/prices/{effective_id}"
         params = {
             "interval": interval,
             "from": str(start_ts),
