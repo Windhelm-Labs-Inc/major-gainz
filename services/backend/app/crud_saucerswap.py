@@ -6,7 +6,13 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from .models import OHLCVSaucerSwap
+import numpy as np
+import math
+from decimal import Decimal
+from typing import Dict, Any
+
+
+from .models import OHLCV, OHLCVSaucerSwap
 from .services.saucerswap_ohlcv import SaucerSwapOHLCVService
 from .settings import SYMBOL_TO_TOKEN_ID, DEFAULT_DAYS, logger, get_token_id_for_symbol
 
@@ -71,8 +77,6 @@ async def refresh_all_tokens() -> None:
 # Query helpers (used by API routes)
 # ---------------------------------------------------------------------------
 
-from decimal import Decimal
-from typing import Dict, Any
 
 
 def _row_to_schema(row: OHLCVSaucerSwap) -> Dict[str, Any]:
@@ -127,44 +131,57 @@ def get_latest_ohlcv(db: Session, token_symbol: str) -> Optional[OHLCVSaucerSwap
 # Analytical endpoints – replicate behaviour of original API ------------------
 
 
+LEGACY_PRICE_TOKENS = {"HBAR"}
+
 def _get_closes(db: Session, token_symbol: str, days: int) -> List[float]:
-    token_id = get_token_id_for_symbol(token_symbol)
-    rows = (
-        db.query(OHLCVSaucerSwap.close_usd)
-        .filter(OHLCVSaucerSwap.token_id == token_id)
-        .order_by(OHLCVSaucerSwap.timestamp_iso.desc())
-        .limit(days)
-        .all()
-    )
-    return [float(r[0]) for r in rows if r[0] is not None]
+    sym = token_symbol.upper()
+    if sym in LEGACY_PRICE_TOKENS:
+        rows = (
+            db.query(OHLCV.close)
+              .filter(OHLCV.token == sym)
+              .order_by(OHLCV.date.desc())
+              .limit(days)
+              .all()
+        )
+        closes = [float(r[0]) for r in rows if r[0] is not None]
+    else:
+        token_id = get_token_id_for_symbol(sym)
+        rows = (
+            db.query(OHLCVSaucerSwap.close_usd)
+              .filter(OHLCVSaucerSwap.token_id == token_id)
+              .order_by(OHLCVSaucerSwap.timestamp_iso.desc())
+              .limit(days)
+              .all()
+        )
+        closes = [float(r[0]) for r in rows if r[0] is not None]
+
+    closes.reverse()                      # chronological
+    return closes
 
 
 def mean_daily_return(db: Session, token_symbol: str, days: int = 30) -> float:
     closes = _get_closes(db, token_symbol, days + 1)
     if len(closes) < days + 1:
         raise ValueError("Not enough data to compute returns")
-    returns = [((closes[i] - closes[i + 1]) / closes[i + 1]) for i in range(days)]
+    returns = np.diff(closes) / closes[:-1]
     return float(sum(returns) / len(returns))
 
 
 def std_daily_return(db: Session, token_symbol: str, days: int = 30) -> float:
-    import numpy as np
 
     closes = _get_closes(db, token_symbol, days + 1)
     if len(closes) < days + 1:
         raise ValueError("Not enough data to compute returns")
-    returns = np.diff(closes) / np.array(closes[1:])
+    returns = np.diff(closes) / closes[:-1]
     return float(np.std(returns, ddof=1))
 
 
 def log_returns(db: Session, token_symbol: str, days: int = 30):
-    import numpy as np
-    import math
 
     closes = _get_closes(db, token_symbol, days + 1)
     if len(closes) < days + 1:
         raise ValueError("Not enough data to compute log returns")
-    returns = [math.log(closes[i] / closes[i + 1]) for i in range(days)]
+    returns = [math.log(closes[i + 1] / closes[i]) for i in range(days)]
     return returns
 
 

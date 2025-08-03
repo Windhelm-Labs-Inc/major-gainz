@@ -76,7 +76,7 @@ def _price_map_from_db(symbols: List[str]) -> Dict[str, float]:
                 # Symbol not supported – leave price at 0 and continue
                 continue
             if row:
-                price_map[sym] = float(row.close_usd)
+                price_map[sym] = float(row["close"])
     finally:
         db.close()
     return price_map
