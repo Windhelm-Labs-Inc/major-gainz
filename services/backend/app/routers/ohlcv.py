@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from .. import schemas, crud, settings
+from .. import schemas, settings
+from .. import crud_saucerswap as crud
+from ..settings import get_token_id_for_symbol
 from ..settings import logger
 import numpy as np
 
@@ -14,10 +16,11 @@ router = APIRouter(prefix="/ohlcv", tags=["ohlcv"])
 
 # helper to validate token
 def _validate_token(token: str):
-    token = token.upper()
-    if token not in settings.HEDERA_TOKEN_IDS:
+    try:
+        get_token_id_for_symbol(token)
+        return token  # Return original case since we now handle case-insensitive lookup
+    except KeyError:
         raise HTTPException(status_code=404, detail="Token not supported")
-    return token
 
 
 @router.get("/{token}", response_model=List[schemas.OHLCVSchema])

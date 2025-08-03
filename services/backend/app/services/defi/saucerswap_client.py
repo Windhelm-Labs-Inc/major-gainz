@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from decimal import Decimal
 
-from ...settings import logger
+from ...settings import logger, TOKENS_ENABLED
 from .base_client import BaseAPIClient, DeFiAPIError
 from .config import API_KEYS, SAUCERSWAP_BASE_URL, HEDERA_MIRROR_URL
 
@@ -40,6 +40,9 @@ class SaucerSwapClient(BaseAPIClient):
             
         super().__init__(base_url, api_key)
         self.mirror_url = HEDERA_MIRROR_URL
+        # Enabled token sets for filtering pools
+        self.enabled_symbols = {s.upper() for s in TOKENS_ENABLED.keys()}
+        self.enabled_ids = {tid for tid in TOKENS_ENABLED.values()}
         
     def health_check(self) -> bool:
         """Check if SaucerSwap API is accessible."""
@@ -56,7 +59,7 @@ class SaucerSwapClient(BaseAPIClient):
             response = self._make_request_with_retry("pools/full")
             if not response:
                 return []
-            return response if isinstance(response, list) else []
+            return self._filter_pools_by_enabled_tokens(response if isinstance(response, list) else [], require_both=True)
         except Exception as e:
             logger.error(f"Failed to fetch V1 pools: {e}")
             return []
@@ -67,7 +70,7 @@ class SaucerSwapClient(BaseAPIClient):
             response = self._make_request_with_retry("v2/pools/full")
             if not response:
                 return []
-            return response if isinstance(response, list) else []
+            return self._filter_pools_by_enabled_tokens(response if isinstance(response, list) else [])
         except Exception as e:
             logger.error(f"Failed to fetch V2 pools: {e}")
             return []
@@ -83,6 +86,39 @@ class SaucerSwapClient(BaseAPIClient):
             logger.error(f"Failed to fetch farms: {e}")
             return []
     
+    def _filter_pools_by_enabled_tokens(self, pools: List[Dict], require_both: bool = False) -> List[Dict]:
+        """Filter pools by the enabled token list.
+
+        Args:
+            pools: Raw list of pools from SaucerSwap API.
+            require_both: If True, **both** tokens in the pair must be enabled.
+                          If False (default) keep pools where *either* token is enabled.
+        """
+        if not pools:
+            return []
+
+        filtered: List[Dict] = []
+        for pool in pools:
+            ta = pool.get('tokenA', {}) or {}
+            tb = pool.get('tokenB', {}) or {}
+
+            ta_sym = str(ta.get('symbol', '')).upper()
+            tb_sym = str(tb.get('symbol', '')).upper()
+            ta_id = str(ta.get('id') or ta.get('token_id') or ta.get('tokenId'))
+            tb_id = str(tb.get('id') or tb.get('token_id') or tb.get('tokenId'))
+
+            if require_both:
+                # Keep pool only if both symbols (or ids) are enabled
+                if ((ta_sym in self.enabled_symbols and tb_sym in self.enabled_symbols) or
+                    (ta_id in self.enabled_ids and tb_id in self.enabled_ids)):
+                    filtered.append(pool)
+            else:
+                # Keep pool if at least one token is enabled
+                if {ta_sym, tb_sym} & self.enabled_symbols or {ta_id, tb_id} & self.enabled_ids:
+                    filtered.append(pool)
+
+        return filtered
+
     def get_farm_positions(self, account_id: str) -> List[Dict]:
         """Retrieve all farm positions for the account (LP tokens staked)."""
         try:

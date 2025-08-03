@@ -1,4 +1,13 @@
-.PHONY: help install test production interactive status portfolio
+
+
+.PHONY: help install test production interactive status portfolio env-shell
+
+# Load environment variables from .env if available and export them so they
+# are accessible inside all recipe commands.
+ifneq (,$(wildcard ../../../../.env))
+include ../../../../.env
+export
+endif
 
 # Default target
 help:
@@ -56,4 +65,13 @@ status:
 
 portfolio:
 	@echo "🔎 Looking up portfolio..."
-	poetry run python -m analytics.portfolio 
+	poetry run python -m analytics.portfolio
+
+# -----------------------------------------------------------------------------
+# Development helpers
+# -----------------------------------------------------------------------------
+
+# Start a new interactive shell with project environment variables loaded.
+env-shell:
+	@echo "🔒 Opening subshell with project environment..."
+	@bash -c "set -a && source ../../../../.env && set +a && exec $${SHELL:-bash} -i" 

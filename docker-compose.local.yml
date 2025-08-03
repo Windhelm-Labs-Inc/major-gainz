@@ -1,0 +1,19 @@
+# Local-only overrides for development
+# Explicitly loads variables from .env file for reliable environment variable handling
+
+services:
+  app:
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - WEBSITES_PORT=8080
+    # Optionally expose backend port too (uncomment if you need it on host)
+    # ports:
+    #   - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
+    #   - "${FRONTEND_PORT:-8080}:8080"
+
+    # For local development you often mount source for live reload
+    volumes:
+      - ./services:/app/services
+      - ./services/backend/logs:/app/services/backend/logs

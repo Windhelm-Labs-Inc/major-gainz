@@ -14,7 +14,7 @@ from ..config import (
     HEDERA_ACCOUNTS_ENDPOINT, HEDERA_TOKENS_ENDPOINT,
     RATE_LIMIT_SLEEP, MAX_PAGE_SIZE, REQUEST_TIMEOUT,
     MAX_RETRIES, BACKOFF_FACTOR, DEFAULT_HEADERS,
-    MIN_BALANCE_THRESHOLDS, PROGRESS_REPORT_INTERVAL,
+    PROGRESS_REPORT_INTERVAL,
     get_saucerswap_api_key, load_decimals_config, ensure_temp_dir
 )
 from ..database import get_db_session, TokenMetadata, TokenHolding, RefreshLog, TokenPriceHistory
@@ -156,10 +156,19 @@ class HederaTokenFetcher:
         if min_usd_value:
             print(f"💰 USD filter: min=${min_usd_value}")
         
+        # Dynamically calculate the minimum balance for $1 USD
+        min_balance_tinybars = 1  # Default fallback
+        if self.pricing_service:
+            one_usd_in_hbar = self.pricing_service.get_tokens_for_usd_amount("0.0.0", Decimal("1.0"))
+            if one_usd_in_hbar:
+                decimals = self.decimals_config.get("HBAR", 8)
+                min_balance_tinybars = int(one_usd_in_hbar * (Decimal(10) ** decimals))
+                print(f"💲 API Filter: Fetching accounts with > {one_usd_in_hbar:,.2f} HBAR (${min_usd_value or 1.00})")
+
         holders = []
         url = HEDERA_ACCOUNTS_ENDPOINT
         params = {
-            "account.balance": f"gt:{MIN_BALANCE_THRESHOLDS['HBAR']}",
+            "account.balance": f"gt:{min_balance_tinybars}",
             "limit": MAX_PAGE_SIZE
         }
         
@@ -288,10 +297,20 @@ class HederaTokenFetcher:
         if min_usd_value:
             print(f"💰 USD filter: min=${min_usd_value}")
         
+        # Dynamically calculate minimum balance for $1 USD
+        min_balance_atomic = 1  # Default fallback
+        if self.pricing_service:
+            one_usd_in_tokens = self.pricing_service.get_tokens_for_usd_amount(token_id, Decimal("1.0"))
+            if one_usd_in_tokens:
+                decimals = self.decimals_config.get(token_symbol)
+                if decimals is not None:
+                    min_balance_atomic = int(one_usd_in_tokens * (Decimal(10) ** decimals))
+                    print(f"💲 API Filter: Fetching accounts with > {one_usd_in_tokens:,.2f} {token_symbol} (${min_usd_value or 1.00})")
+
         holders = []
         url = f"{HEDERA_TOKENS_ENDPOINT}/{token_id}/balances"
         params = {
-            "account.balance": f"gt:{MIN_BALANCE_THRESHOLDS.get(token_symbol, 1)}",
+            "account.balance": f"gt:{min_balance_atomic}",
             "limit": MAX_PAGE_SIZE
         }
         

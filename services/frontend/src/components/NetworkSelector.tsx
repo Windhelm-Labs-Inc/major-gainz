@@ -1,6 +1,6 @@
 import React from 'react'
 
-type HederaNetwork = 'mainnet' | 'testnet'
+type HederaNetwork = 'mainnet'
 
 interface Props {
   value: HederaNetwork
@@ -18,7 +18,6 @@ const NetworkSelector: React.FC<Props> = ({ value, onChange }) => {
         value={value}
         onChange={e => onChange(e.target.value as HederaNetwork)}
       >
-        <option value="testnet">Testnet</option>
         <option value="mainnet">Mainnet</option>
       </select>
     </div>
