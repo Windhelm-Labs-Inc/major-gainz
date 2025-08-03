@@ -264,9 +264,10 @@ function App() {
     }
   }, [selectedToken]) // Remove updateHolderAnalysis from dependencies since it's stable from the hook
 
-  const handleLoadPortfolio = async () => {
-    console.log('[App] Loading portfolio for', selectedAddress, 'on', network)
-    if (!selectedAddress) {
+  const handleLoadPortfolio = async (addressOverride?: string) => {
+    const targetAddress = addressOverride || selectedAddress
+    console.log('[App] Loading portfolio for', targetAddress, 'on', network)
+    if (!targetAddress) {
       alert('Please select an address first')
       return
     }
@@ -276,8 +277,8 @@ function App() {
     try {
       // Load portfolio and DeFi data in parallel
       const [portfolioRes, defiRes, saucerPoolsRes, bonzoPoolsRes] = await Promise.all([
-        fetch(`/portfolio/${selectedAddress}?network=${network}`),
-        fetch(`/defi/profile/${selectedAddress}?testnet=false`),
+        fetch(`/portfolio/${targetAddress}?network=${network}`),
+        fetch(`/defi/profile/${targetAddress}?testnet=false`),
         fetch(`/defi/pools/saucerswap?version=all&testnet=false`),
         fetch(`/defi/pools/bonzo`)
       ])
@@ -528,7 +529,7 @@ function App() {
           <AddressDisplay address={selectedAddress} />
 
           <button 
-            onClick={handleLoadPortfolio} 
+            onClick={() => handleLoadPortfolio()} 
             disabled={isLoadingPortfolio || !selectedAddress} 
             className="select-address-btn"
             style={{ marginTop: '1rem' }}
@@ -1578,10 +1579,12 @@ function App() {
           address={confirmAddr}
           isLoading={isLoadingPortfolio}
           onCancel={() => setConfirmAddr(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
+            const newAddress = confirmAddr!
             setConfirmAddr(null)
-            setSelectedAddress(confirmAddr!)
-            // The useEffect will trigger handleLoadPortfolio when selectedAddress changes
+            setSelectedAddress(newAddress)
+            // Directly call handleLoadPortfolio with the new address to ensure portfolio reloads
+            await handleLoadPortfolio(newAddress)
           }}
         />
       )}
