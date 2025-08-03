@@ -218,7 +218,7 @@ function App() {
             console.log('[App] SaucerSwap pools loaded:', poolsData)
             const sp = poolsData.pools || []
             setSaucerPools(sp)
-            setDefiData(prev => ({ ...(prev||{}), all_saucerswap_pools: sp }))
+            setDefiData(prev => ({ ...(prev||{}), filtered_saucerswap_pools: sp }))
           } catch (err) {
             console.error('[App] SaucerSwap pools parse error', err)
           }
