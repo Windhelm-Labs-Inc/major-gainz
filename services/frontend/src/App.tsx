@@ -13,6 +13,7 @@ import type { PoolData } from './components/PoolDetailDrawer'
 import AddressDisplay from './components/AddressDisplay'
 import TokenHolderAnalysis from './components/TokenHolderAnalysis'
 import JsonExplorer from './components/JsonExplorer'
+import ConfirmAddressModal from './components/ConfirmAddressModal'
 import { useScratchpad } from './hooks/useScratchpad'
 import './App.css'
 
@@ -27,6 +28,7 @@ function App() {
   const [walletAddress, setWalletAddress] = useState<string>('')
   const [manualAddress, setManualAddress] = useState<string>('')
   const [selectedAddress, setSelectedAddress] = useState<string>('')
+  const [confirmAddr, setConfirmAddr] = useState<string | null>(null)
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false)
   const [selectedToken, setSelectedToken] = useState<Holding | null>(null)
@@ -471,6 +473,7 @@ function App() {
           userAddress={selectedAddress}
           onClose={handleCloseAnalysis}
           onAnalysisUpdate={handleAnalysisUpdate}
+          onAddressClick={(accountId) => setConfirmAddr(accountId)}
         />
       )}
 
@@ -1567,6 +1570,21 @@ function App() {
           />
         </div>
       </div>
+
+      {/* Address Confirmation Modal */}
+      {confirmAddr && (
+        <ConfirmAddressModal
+          isOpen={!!confirmAddr}
+          address={confirmAddr}
+          isLoading={isLoadingPortfolio}
+          onCancel={() => setConfirmAddr(null)}
+          onConfirm={() => {
+            setConfirmAddr(null)
+            setSelectedAddress(confirmAddr!)
+            // The useEffect will trigger handleLoadPortfolio when selectedAddress changes
+          }}
+        />
+      )}
     </div>
   )
 }

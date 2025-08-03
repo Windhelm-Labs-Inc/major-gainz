@@ -7,6 +7,7 @@ interface Props {
   userAddress: string
   onClose: () => void
   onAnalysisUpdate?: (analysisData: TokenAnalysisData) => void
+  onAddressClick?: (accountId: string) => void
 }
 
 interface TokenHolderData {
@@ -23,7 +24,7 @@ interface TokenHolderData {
   }>
 }
 
-const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onClose, onAnalysisUpdate }) => {
+const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onClose, onAnalysisUpdate, onAddressClick }) => {
   const [holderData, setHolderData] = useState<TokenHolderData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -352,7 +353,41 @@ const TokenHolderAnalysis: React.FC<Props> = ({ selectedToken, userAddress, onCl
                     }}>
                       {idx + 1}
                     </div>
-                    <span style={{ fontSize: '0.9rem', fontFamily: 'monospace' }}>
+                    <span 
+                      style={{ 
+                        fontSize: '0.9rem', 
+                        fontFamily: 'monospace',
+                        cursor: onAddressClick ? 'pointer' : 'default',
+                        color: onAddressClick ? '#60a5fa' : 'inherit',
+                        textDecoration: 'none',
+                        borderRadius: '4px',
+                        padding: '2px 4px',
+                        transition: 'all 0.2s ease',
+                        wordBreak: 'break-all'
+                      }}
+                      onClick={() => onAddressClick?.(holder.account_id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onAddressClick?.(holder.account_id)
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        if (onAddressClick) {
+                          e.currentTarget.style.backgroundColor = 'rgba(96, 165, 250, 0.1)'
+                          e.currentTarget.style.textDecoration = 'underline'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (onAddressClick) {
+                          e.currentTarget.style.backgroundColor = 'transparent'
+                          e.currentTarget.style.textDecoration = 'none'
+                        }
+                      }}
+                      role={onAddressClick ? 'button' : undefined}
+                      tabIndex={onAddressClick ? 0 : undefined}
+                      title={onAddressClick ? `Click to switch to address ${holder.account_id}` : undefined}
+                    >
                       {formatAccountId(holder.account_id)}
                     </span>
                   </div>
