@@ -59,14 +59,24 @@ async def _fetch_token_info(client: httpx.AsyncClient, base: str, token_id: str)
 
 
 def _price_map_from_db(symbols: List[str]) -> Dict[str, float]:
-    """Return mapping symbol -> latest close price from local OHLCV DB."""
+    """Return mapping symbol -> latest close price from local OHLCV DB.
+
+    Any symbol that is not tracked in the OHLCV table (i.e. not present in
+    ``tokens_enabled.json``) is silently ignored and left at price 0.0. This
+    prevents portfolio construction from failing when a wallet holds exotic
+    tokens such as LP shares or airdrops that we do not yet track.
+    """
     price_map: Dict[str, float] = {sym: 0.0 for sym in symbols}
     db = SessionLocal()
     try:
         for sym in symbols:
-            row = crud.get_latest_ohlcv(db, sym)
+            try:
+                row = crud.get_latest_ohlcv(db, sym)
+            except KeyError:
+                # Symbol not supported – leave price at 0 and continue
+                continue
             if row:
-                                price_map[sym] = float(row.close_usd)
+                price_map[sym] = float(row.close_usd)
     finally:
         db.close()
     return price_map
@@ -173,8 +183,8 @@ async def build_portfolio(address: str, network: Network = "mainnet"):
     try:
         price_map = _price_map_from_db(list(set(symbols_needed)))
     except Exception as e:
-        logger.error(f"Failed fetching prices from database: {e}")
-        raise
+        logger.warning(f"Price lookup failed; continuing with zero prices: {e}")
+        price_map = {}
 
     total_usd = 0.0
     for h in holdings:
