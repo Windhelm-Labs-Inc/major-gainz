@@ -34,7 +34,9 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
     unallocated.sort((a, b) => {
       switch (sortBy) {
         case 'apy':
-          return (b.apy || 0) - (a.apy || 0)
+          const apyA = a.apy !== undefined ? a.apy : -1
+          const apyB = b.apy !== undefined ? b.apy : -1
+          return apyB - apyA
         case 'tvl':
           return (b.tvlUsd || 0) - (a.tvlUsd || 0)
         case 'volume':
@@ -502,6 +504,16 @@ const MATLABHeatmapGrid: React.FC<MATLABHeatmapGridProps> = ({
                   {pool.tvlUsd && (
                     <div style={{ color: '#00d4ff' }}>
                       TVL: ${(pool.tvlUsd/1e6).toFixed(1)}M
+                    </div>
+                  )}
+                  {pool.volume24hUsd !== undefined && (
+                    <div style={{ color: '#00d4ff' }}>
+                      24h Vol: ${(pool.volume24hUsd/1e6).toFixed(1)}M
+                    </div>
+                  )}
+                  {pool.utilisation !== undefined && (
+                    <div style={{ color: pool.utilisation>0.9?'#ff4d4f':pool.utilisation>0.7?'#ffc107':'#00ff88' }}>
+                      Util: {(pool.utilisation*100).toFixed(0)}%
                     </div>
                   )}
                   {pool.userStakedUsd && pool.userStakedUsd > 0 && (

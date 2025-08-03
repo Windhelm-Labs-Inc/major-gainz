@@ -7,6 +7,8 @@ export interface PoolData {
   apy?: number
   tvlUsd?: number
   userStakedUsd?: number
+  volume24hUsd?: number
+  utilisation?: number
   extra?: Record<string, any>
 }
 

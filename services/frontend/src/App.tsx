@@ -74,6 +74,8 @@ function App() {
         poolId: (raw?.poolId ?? raw?.id ?? raw?.address ?? name) as string,
         name,
         apy: raw?.apy ?? raw?.apr ?? raw?.rewardApy ?? raw?.supply_apy ?? raw?.variable_borrow_apy ?? undefined,
+        volume24hUsd: raw?.volumeUSD24h ?? raw?.volume24hUSD ?? raw?.volume24h_usd ?? raw?.volume24h ?? undefined,
+        utilisation: raw?.utilization_rate ?? raw?.utilisation_rate ?? undefined,
         tvlUsd: raw?.tvl_usd ?? raw?.liquidityUSD ?? raw?.total_supply_usd ?? raw?.available_liquidity_usd ?? undefined,
         userStakedUsd: userStakedValue,
         extra: raw
