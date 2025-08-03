@@ -14,8 +14,12 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
   const [selectedPool, setSelectedPool] = useState<PoolData | null>(null)
   const [hoveredPool, setHoveredPool] = useState<string | null>(null)
 
-  // Filter and sort real pools only - NO SYNTHETIC DATA
-  const allPools = useMemo(() => {
+  // State for controls
+  const [poolCount, setPoolCount] = useState(50)
+  const [sortBy, setSortBy] = useState<'apy' | 'tvl' | 'volume'>('apy')
+
+  // Separate allocated and unallocated pools - NO SYNTHETIC DATA
+  const { allocatedPools, unallocatedPools } = useMemo(() => {
     // Keep only pools with meaningful data
     const realPools = pools.filter(p => 
       (p.apy !== undefined && p.apy !== null && p.apy > 0) || 
@@ -23,24 +27,35 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
       (p.tvlUsd && p.tvlUsd > 0)
     )
     
-    // Sort: user positions first, then by APY, then by TVL
-    realPools.sort((a, b) => {
-      const stakeA = a.userStakedUsd || 0
-      const stakeB = b.userStakedUsd || 0
-      if (stakeA !== stakeB) return stakeB - stakeA // User positions first
-      
-      const apyA = a.apy || 0
-      const apyB = b.apy || 0
-      if (apyA !== apyB) return apyB - apyA // Highest APY next
-      
-      const tvlA = a.tvlUsd || 0
-      const tvlB = b.tvlUsd || 0
-      return tvlB - tvlA // Highest TVL last
+    // Separate allocated vs unallocated
+    const allocated = realPools.filter(p => (p.userStakedUsd || 0) > 0)
+    const unallocated = realPools.filter(p => (p.userStakedUsd || 0) === 0)
+    
+    // Sort allocated by stake amount (highest first)
+    allocated.sort((a, b) => (b.userStakedUsd || 0) - (a.userStakedUsd || 0))
+    
+    // Sort unallocated by user preference
+    unallocated.sort((a, b) => {
+      switch (sortBy) {
+        case 'apy':
+          return (b.apy || 0) - (a.apy || 0)
+        case 'tvl':
+          return (b.tvlUsd || 0) - (a.tvlUsd || 0)
+        case 'volume':
+          // Use TVL as proxy for volume if no volume data
+          return (b.tvlUsd || 0) - (a.tvlUsd || 0)
+        default:
+          return 0
+      }
     })
     
-    // Return only real pools, no synthetic padding
-    return realPools
-  }, [pools])
+    return {
+      allocatedPools: allocated,
+      unallocatedPools: unallocated.slice(0, poolCount - allocated.length)
+    }
+  }, [pools, poolCount, sortBy])
+
+  const allPools = [...allocatedPools, ...unallocatedPools]
 
   const maxApy = Math.max(...allPools.map(p => p.apy || 0), 25)
   const maxTvl = Math.max(...allPools.map(p => p.tvlUsd || 0), 1000000)
@@ -98,7 +113,7 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
             color: '#6c757d', 
             fontSize: '0.9rem' 
           }}>
-            {allPools.length} pools • Interactive pseudocolor visualization
+            {allocatedPools.length} allocated • {unallocatedPools.length} available • Interactive visualization
           </p>
         </div>
         <button
@@ -126,17 +141,110 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
           border: '1px solid #dee2e6',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
-          {/* Multi-metric MATLAB-style grid */}
-          <MATLABHeatmapGrid
-            pools={allPools}
-            maxApy={maxApy}
-            maxTvl={maxTvl}
-            maxStake={maxStake}
-            getHeatmapColor={getHeatmapColor}
-            onPoolClick={setSelectedPool}
-            hoveredPool={hoveredPool}
-            onPoolHover={setHoveredPool}
-          />
+          {/* Controls */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '2rem',
+            padding: '1rem',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '6px',
+            border: '1px solid #dee2e6'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: '500', color: '#495057' }}>
+                Pool Count:
+              </label>
+              <input
+                type="range"
+                min="10"
+                max="100"
+                value={poolCount}
+                onChange={(e) => setPoolCount(Number(e.target.value))}
+                style={{ width: '150px' }}
+              />
+              <span style={{ fontSize: '0.9rem', color: '#6c757d', minWidth: '3rem' }}>
+                {poolCount}
+              </span>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: '500', color: '#495057' }}>
+                Sort Available Pools:
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'apy' | 'tvl' | 'volume')}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: '4px',
+                  border: '1px solid #ced4da',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <option value="apy">Highest APY</option>
+                <option value="tvl">Highest TVL</option>
+                <option value="volume">Highest Volume</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Allocated Pools Section */}
+          {allocatedPools.length > 0 && (
+            <div style={{ marginBottom: '2rem' }}>
+              <h4 style={{ 
+                margin: '0 0 1rem 0', 
+                color: '#495057', 
+                fontSize: '1.1rem',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                💰 Your Positions ({allocatedPools.length})
+              </h4>
+              <MATLABHeatmapGrid
+                pools={allocatedPools}
+                maxApy={maxApy}
+                maxTvl={maxTvl}
+                maxStake={maxStake}
+                getHeatmapColor={getHeatmapColor}
+                onPoolClick={setSelectedPool}
+                hoveredPool={hoveredPool}
+                onPoolHover={setHoveredPool}
+                isAllocatedSection={true}
+              />
+            </div>
+          )}
+
+          {/* Available Pools Section */}
+          {unallocatedPools.length > 0 && (
+            <div>
+              <h4 style={{ 
+                margin: '0 0 1rem 0', 
+                color: '#495057', 
+                fontSize: '1.1rem',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                📊 Available Opportunities ({unallocatedPools.length})
+              </h4>
+              <MATLABHeatmapGrid
+                pools={unallocatedPools}
+                maxApy={maxApy}
+                maxTvl={maxTvl}
+                maxStake={maxStake}
+                getHeatmapColor={getHeatmapColor}
+                onPoolClick={setSelectedPool}
+                hoveredPool={hoveredPool}
+                onPoolHover={setHoveredPool}
+                isAllocatedSection={false}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -158,10 +266,11 @@ interface MATLABHeatmapGridProps {
   onPoolClick: (pool: PoolData) => void
   hoveredPool: string | null
   onPoolHover: (poolId: string | null) => void
+  isAllocatedSection: boolean
 }
 
 const MATLABHeatmapGrid: React.FC<MATLABHeatmapGridProps> = ({
-  pools, maxApy, maxTvl, maxStake, getHeatmapColor, onPoolClick, hoveredPool, onPoolHover
+  pools, maxApy, maxTvl, maxStake, getHeatmapColor, onPoolClick, hoveredPool, onPoolHover, isAllocatedSection
 }) => {
   const gridCols = 5 // Fixed 5-column layout
   const gridRows = Math.ceil(pools.length / gridCols)
@@ -277,6 +386,20 @@ const MATLABHeatmapGrid: React.FC<MATLABHeatmapGridProps> = ({
                                 pool.platform === 'BONZO' ? '#059669' : '#6c757d'
               }} />
 
+              {/* Allocation indicator */}
+              {isAllocatedSection && (
+                <div style={{
+                  position: 'absolute',
+                  top: '2px',
+                  left: '2px',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#fbbf24',
+                  border: '1px solid white'
+                }} />
+              )}
+
               {/* Pool identifier overlay */}
               <div style={{
                 position: 'absolute',
@@ -360,7 +483,10 @@ const MATLABHeatmapGrid: React.FC<MATLABHeatmapGridProps> = ({
         color: '#6c757d'
       }}>
         <span>Matrix: {gridRows}×{gridCols}</span>
-        <span>SaucerSwap (🔵) • Bonzo (🟢)</span>
+        <span>
+          SaucerSwap (🔵) • Bonzo (🟢)
+          {isAllocatedSection && ' • Your Position (🟡)'}
+        </span>
         <span>Click for details</span>
       </div>
     </div>
