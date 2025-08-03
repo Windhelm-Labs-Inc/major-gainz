@@ -18,9 +18,9 @@ import './App.css'
 
 function App() {
   const [connectedWallet, setConnectedWallet] = useState<string | null>(null)
-  const defaultNet = __HEDERA_NETWORK__ === 'testnet' ? 'testnet' : 'mainnet'
-  const [network, setNetwork] = useState<'mainnet' | 'testnet'>(defaultNet)
-  const handleNetworkChange = (net: 'mainnet' | 'testnet') => {
+  const defaultNet = 'mainnet'
+  const [network, setNetwork] = useState<'mainnet'>(defaultNet)
+  const handleNetworkChange = (net: 'mainnet') => {
     console.log('[App] Network changed:', net)
     setNetwork(net)
   }
@@ -275,8 +275,8 @@ function App() {
       // Load portfolio and DeFi data in parallel
       const [portfolioRes, defiRes, saucerPoolsRes, bonzoPoolsRes] = await Promise.all([
         fetch(`/portfolio/${selectedAddress}?network=${network}`),
-        fetch(`/defi/profile/${selectedAddress}?testnet=${network === 'testnet'}`),
-        fetch(`/defi/pools/saucerswap?version=all&testnet=${network === 'testnet'}`),
+        fetch(`/defi/profile/${selectedAddress}?testnet=false`),
+        fetch(`/defi/pools/saucerswap?version=all&testnet=false`),
         fetch(`/defi/pools/bonzo`)
       ])
       

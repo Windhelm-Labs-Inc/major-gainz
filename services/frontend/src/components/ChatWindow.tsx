@@ -12,7 +12,7 @@ interface Message {
 
 interface ChatWindowProps {
   selectedAddress: string
-  hederaNetwork: 'mainnet' | 'testnet'
+  hederaNetwork: 'mainnet'
   portfolio?: Portfolio
   scratchpadContext?: string
 }

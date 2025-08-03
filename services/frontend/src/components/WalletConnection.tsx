@@ -8,8 +8,7 @@ declare const __HEDERA_NETWORK__: string
 
 // Hedera EVM chain IDs
 const MAINNET_CHAIN_ID = '0x127' // 295
-const TESTNET_CHAIN_ID = '0x128' // 296
-const ALLOWED_CHAIN_IDS = [MAINNET_CHAIN_ID, TESTNET_CHAIN_ID]
+const ALLOWED_CHAIN_IDS = [MAINNET_CHAIN_ID]
 
 // Determine preferred Hedera network from settings (mainnet|testnet)
 interface WalletConnectionProps {
@@ -17,7 +16,7 @@ interface WalletConnectionProps {
   onDisconnect: () => void
   connectedWallet: string | null
   walletAddress: string
-  hederaNetwork: 'mainnet' | 'testnet'
+  hederaNetwork: 'mainnet'
 }
 
 const WalletConnection: React.FC<WalletConnectionProps> = ({
@@ -30,7 +29,7 @@ const WalletConnection: React.FC<WalletConnectionProps> = ({
   const [isConnecting, setIsConnecting] = useState(false)
 
   const PREFERRED_NETWORK = hederaNetwork
-  const TARGET_CHAIN_ID = PREFERRED_NETWORK === 'mainnet' ? MAINNET_CHAIN_ID : TESTNET_CHAIN_ID
+  const TARGET_CHAIN_ID = MAINNET_CHAIN_ID
 
   const connectMetaMask = async () => {
     console.log('[WalletConnection] connectMetaMask start')
@@ -57,33 +56,24 @@ const WalletConnection: React.FC<WalletConnectionProps> = ({
           // 4902 = unrecognised chain – try to add it
           if (switchError?.code === 4902) {
             try {
-              const chainConfig =
-                PREFERRED_NETWORK === 'mainnet'
-                  ? {
-                      chainId: MAINNET_CHAIN_ID,
-                      chainName: 'Hedera Mainnet',
-                      nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
-                      rpcUrls: ['https://mainnet.hashio.io/api'],
-                      blockExplorerUrls: ['https://hashscan.io/mainnet']
-                    }
-                  : {
-                      chainId: TESTNET_CHAIN_ID,
-                      chainName: 'Hedera Testnet',
-                      nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
-                      rpcUrls: ['https://testnet.hashio.io/api'],
-                      blockExplorerUrls: ['https://hashscan.io/testnet']
-                    }
+              const chainConfig = {
+                chainId: MAINNET_CHAIN_ID,
+                chainName: 'Hedera Mainnet',
+                nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
+                rpcUrls: ['https://mainnet.hashio.io/api'],
+                blockExplorerUrls: ['https://hashscan.io/mainnet']
+              }
               await provider.request({
                 method: 'wallet_addEthereumChain',
                 params: [chainConfig]
               })
             } catch (addError) {
-              console.error('Failed to add Hedera Testnet to MetaMask', addError)
-              alert('Please switch your MetaMask network to Hedera Mainnet or Testnet and try again.')
+              console.error('Failed to add Hedera Mainnet to MetaMask', addError)
+              alert('Please switch your MetaMask network to Hedera Mainnet and try again.')
               return
             }
           } else {
-            alert('Please switch your MetaMask network to Hedera Mainnet or Testnet and try again.')
+            alert('Please switch your MetaMask network to Hedera Mainnet and try again.')
             return
           }
         }
@@ -196,8 +186,8 @@ const WalletConnection: React.FC<WalletConnectionProps> = ({
         return
       }
 
-      // Prefer Testnet – adjust to MAINNET if required.
-      const network = PREFERRED_NETWORK === 'mainnet' ? LedgerId.MAINNET : LedgerId.TESTNET
+      // Use Mainnet
+      const network = LedgerId.MAINNET
 
       const hashconnect = new HashConnect(network, projectId, appMetadata, false)
 
