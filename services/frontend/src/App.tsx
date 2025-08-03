@@ -57,13 +57,25 @@ function App() {
 
     // Helper to safely push if value present
     const push = (platform: 'SAUCERSWAP' | 'BONZO', raw: any, name: string) => {
+      // For SaucerSwap, use underlyingValueUSD for V1 positions, and avoid it for global pools
+      // For Bonzo, use usd_value from individual positions
+      let userStakedValue = undefined
+      if (platform === 'SAUCERSWAP') {
+        // Only use underlyingValueUSD if it's a user position (has sharePercentage or user-specific data)
+        if (raw?.sharePercentage !== undefined || raw?.lpTokenBalance !== undefined) {
+          userStakedValue = raw?.underlyingValueUSD
+        }
+      } else if (platform === 'BONZO') {
+        userStakedValue = raw?.usd_value
+      }
+
       all.push({
         platform,
         poolId: (raw?.poolId ?? raw?.id ?? raw?.address ?? name) as string,
         name,
         apy: raw?.apy ?? raw?.apr ?? raw?.rewardApy ?? raw?.supply_apy ?? raw?.variable_borrow_apy ?? undefined,
-        tvlUsd: raw?.tvl_usd ?? raw?.liquidityUSD ?? raw?.underlyingValueUSD ?? raw?.total_supply_usd ?? raw?.available_liquidity_usd ?? undefined,
-        userStakedUsd: raw?.myLiquidityUSD ?? raw?.myValueUSD ?? raw?.user_staked_usd ?? raw?.underlyingValueUSD ?? raw?.usd_value ?? undefined,
+        tvlUsd: raw?.tvl_usd ?? raw?.liquidityUSD ?? raw?.total_supply_usd ?? raw?.available_liquidity_usd ?? undefined,
+        userStakedUsd: userStakedValue,
         extra: raw
       })
     }
@@ -71,18 +83,53 @@ function App() {
     // SaucerSwap pools (flatten v1/v2/farms)
     if (defiData?.saucer_swap) {
       const ss = defiData.saucer_swap
-      ;(ss.pools_v1 || []).forEach((p: any) => push('SAUCERSWAP', p, `${p.tokenA ?? p.token0}/${p.tokenB ?? p.token1}`))
-      ;(ss.pools_v2 || []).forEach((p: any) => push('SAUCERSWAP', p, `${p.tokenA ?? p.token0}/${p.tokenB ?? p.token1}`))
-      ;(ss.farms || []).forEach((p: any) => push('SAUCERSWAP', p, p.name ?? 'Farm'))
-      ;(ss.vaults || []).forEach((p: any) => push('SAUCERSWAP', p, p.name ?? 'Vault'))
+      
+      // V1 positions - these have user stake data
+      ;(ss.pools_v1 || []).forEach((p: any) => {
+        const tokenA = p.tokenA || p.token0 || 'Token A'
+        const tokenB = p.tokenB || p.token1 || 'Token B'
+        push('SAUCERSWAP', p, `${tokenA}/${tokenB} V1`)
+      })
+      
+      // V2 positions - these have user stake data  
+      ;(ss.pools_v2 || []).forEach((p: any) => {
+        const tokenA = p.token0 || p.tokenA || 'Token 0'
+        const tokenB = p.token1 || p.tokenB || 'Token 1'
+        const feeTier = p.feeTier ? ` (${p.feeTier/10000}%)` : ''
+        push('SAUCERSWAP', p, `${tokenA}/${tokenB} V2${feeTier}`)
+      })
+      
+      // Farm positions - these have user stake data
+      ;(ss.farms || []).forEach((p: any) => {
+        const farmName = p.pair || p.name || `Farm ${p.farmId || p.poolId || ''}`
+        push('SAUCERSWAP', p, `🚜 ${farmName}`)
+      })
+      
+      // Vault positions - these have user stake data
+      ;(ss.vaults || []).forEach((p: any) => {
+        const vaultName = p.vault || p.name || 'Vault'
+        push('SAUCERSWAP', p, `🏦 ${vaultName}`)
+      })
     }
 
     // Bonzo pools (markets)
     const bonzo = defiData?.bonzo_finance
     if (bonzo) {
       const toArr = (v: any): any[] => Array.isArray(v) ? v : v ? Object.values(v) : []
-      toArr(bonzo.supplied).forEach((m: any) => push('BONZO', m, m.symbol ?? m.token_symbol))
-      toArr(bonzo.borrowed).forEach((m: any) => push('BONZO', m, m.symbol ?? m.token_symbol))
+      
+      // Supplied assets
+      toArr(bonzo.supplied).forEach((m: any) => {
+        const symbol = m.symbol ?? m.token_symbol ?? 'Unknown'
+        const amount = m.amount ? ` (${parseFloat(m.amount).toFixed(2)})` : ''
+        push('BONZO', m, `💰 Supply ${symbol}${amount}`)
+      })
+      
+      // Borrowed assets  
+      toArr(bonzo.borrowed).forEach((m: any) => {
+        const symbol = m.symbol ?? m.token_symbol ?? 'Unknown'
+        const amount = m.amount ? ` (${parseFloat(m.amount).toFixed(2)})` : ''
+        push('BONZO', m, `🏦 Borrow ${symbol}${amount}`)
+      })
     }
 
     return all
