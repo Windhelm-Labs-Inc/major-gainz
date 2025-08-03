@@ -15,7 +15,7 @@ const DefiHeatmaps: React.FC<Props> = ({ pools, initiallyOpen = false }) => {
   const [hoveredPool, setHoveredPool] = useState<string | null>(null)
 
   // State for controls
-  const [poolCount, setPoolCount] = useState(50)
+  const [poolCount, setPoolCount] = useState(30)
   const [sortBy, setSortBy] = useState<'apy' | 'tvl' | 'volume'>('apy')
 
   // Separate allocated and unallocated pools - NO SYNTHETIC DATA
@@ -395,6 +395,52 @@ const MATLABHeatmapGrid: React.FC<MATLABHeatmapGridProps> = ({
                   border: '1px solid white'
                 }} />
               )}
+
+              {/* APY badge */}
+              {pool.apy !== undefined && (
+                <div style={{
+                  position: 'absolute',
+                  top: '2px',
+                  right: '12px',
+                  backgroundColor: 'rgba(0,0,0,0.6)',
+                  padding: '1px 4px',
+                  borderRadius: '4px',
+                  fontSize: '0.55rem',
+                  color: 'white',
+                  fontWeight: 600
+                }}>
+                  {pool.apy.toFixed(1)}%
+                </div>
+              )}
+
+              {/* TVL badge */}
+              {pool.tvlUsd !== undefined && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '18px',
+                  left: '2px',
+                  backgroundColor: 'rgba(255,255,255,0.85)',
+                  padding: '1px 4px',
+                  borderRadius: '4px',
+                  fontSize: '0.55rem',
+                  color: '#343a40',
+                  fontWeight: 600
+                }}>
+                  ${ (pool.tvlUsd/1e6).toFixed(1)}M
+                </div>
+              )}
+
+              {/* Risk bar */}
+              {(() => {
+                // utilisation from Bonzo or computed if available
+                const util = (pool as any).utilization_rate ?? (pool as any).utilisation_rate ?? (pool as any).utilisation ?? undefined
+                if(util === undefined) return null
+                const pct = Math.min(util, 1) * 100
+                const color = util > 0.9 ? '#dc3545' : util > 0.7 ? '#ffb703' : '#28a745'
+                return (
+                  <div style={{ position:'absolute', bottom:0, left:0, height:'3px', width:`${pct}%`, backgroundColor: color }} />
+                )
+              })()}
 
               {/* Pool identifier overlay */}
               <div style={{
