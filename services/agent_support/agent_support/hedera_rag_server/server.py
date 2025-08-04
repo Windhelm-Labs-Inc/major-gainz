@@ -145,6 +145,26 @@ if __name__ == "__main__":
     
     # Wait a moment for MCP server to start
     time.sleep(1)
+
+    # ---------------------------------------------------------
+    # Cleanup / graceful shutdown
+    # ---------------------------------------------------------
+    @app.on_event("shutdown")
+    def _shutdown_mcp() -> None:  # noqa: D401
+        """Ensure the background MCP server is stopped when FastAPI exits."""
+        logger.info("FastAPI shutdown: attempting to stop background MCP server")
+        # FastMCP exposes a ``shutdown`` method in recent versions; call if present
+        try:
+            if hasattr(mcp, "shutdown"):
+                mcp.shutdown()  # type: ignore[attr-defined]
+        except Exception as exc:  # pragma: no cover
+            logger.debug("mcp.shutdown() raised: %s", exc)
+
+        # Wait briefly for the background thread to exit
+        if mcp_thread.is_alive():
+            mcp_thread.join(timeout=2.0)
+            if mcp_thread.is_alive():
+                logger.warning("MCP background thread still alive after join timeout")
     
     # Create proxy endpoints for MCP with CORS
     @app.api_route("/mcp{path:path}", methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"])

@@ -18,11 +18,7 @@ const PureChatPage: React.FC = () => {
       <PureChatChatWindow personality={personality} hederaNetwork={network} />
 
       {/* Settings trigger */}
-      <button
-        className="pc-settings-btn"
-        onClick={() => setSettingsOpen(true)}
-        style={{ position: 'absolute', top: 10, right: 10 }}
-      >
+      <button className="pc-settings-btn" onClick={() => setSettingsOpen(true)} style={{position:'absolute',top:10,right:10}}>
         ⚙ Settings
       </button>
 
