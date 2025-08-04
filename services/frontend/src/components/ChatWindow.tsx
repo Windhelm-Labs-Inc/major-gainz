@@ -1,6 +1,11 @@
 import React, { useState, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+// @ts-ignore – no TS types
+import remarkMath from 'remark-math'
+// @ts-ignore – no TS types
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import type { Portfolio } from '../types/portfolio'
 
 interface Message {
@@ -330,7 +335,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div className="message-text">
                 {message.sender === 'system' ? (
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
                     components={{
                       table: ({ children, ...props }) => (
                         <table className="markdown-table" {...props}>
