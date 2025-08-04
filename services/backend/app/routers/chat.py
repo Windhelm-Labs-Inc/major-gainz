@@ -1,188 +1,194 @@
-"""Chat proxy API endpoint for secure OpenAI integration."""
+"""OpenAI Reverse Proxy Router
 
-import os
+This router exposes a wildcard path under /v1/* that transparently proxies
+requests to https://api.openai.com/v1/* while injecting the secret
+Authorization header.  It supports both regular JSON responses and Server-
+Sent Event (streaming) responses used when the `stream=true` query parameter
+is supplied.
+"""
+
+from __future__ import annotations
+
 import asyncio
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+import os
+import json
+import typing as _t
+
 import httpx
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from ..settings import logger
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+# ---------------------------------------------------------------------------
+# Configurable parameters (env-driven so we can tune in each environment)
+# ---------------------------------------------------------------------------
+# Deprecated constant – kept for backward compat; requests now fetch live value
+OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+PROXY_TIMEOUT: float = float(os.getenv("OPENAI_PROXY_TIMEOUT", "30"))
+MAX_RETRIES: int = int(os.getenv("OPENAI_PROXY_RETRIES", "3"))
+BACKOFF_SECONDS: float = float(os.getenv("OPENAI_PROXY_BACKOFF", "0.5"))
+
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+}
+
+router = APIRouter(tags=["openai_proxy"])
 
 
-class ChatMessage(BaseModel):
-    role: str  # "user", "assistant", "system"
-    content: str
+# ---------------------------------------------------------------------------
+# Helper utilities
+# ---------------------------------------------------------------------------
+
+def _strip_hop_headers(headers: httpx.Headers | dict[str, str]) -> dict[str, str]:
+    """Return a copy minus hop-by-hop headers that should not be forwarded."""
+    return {k: v for k, v in headers.items() if k.lower() not in HOP_BY_HOP_HEADERS}
 
 
-class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
-    model: Optional[str] = "gpt-4o"
-    max_tokens: Optional[int] = 2000
-    temperature: Optional[float] = 0.7
-    portfolio_context: Optional[Dict[str, Any]] = None
-    scratchpad_context: Optional[str] = None
+async def _sleep_backoff(attempt: int) -> None:
+    await asyncio.sleep(BACKOFF_SECONDS * (2**attempt))
 
 
-class ChatResponse(BaseModel):
-    message: str
-    usage: Optional[Dict[str, Any]] = None
+async def _forward_with_retries(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: bytes | None,
+    max_retries: int,
+) -> httpx.Response:
+    """Forward the request, retrying only when it is safe to do so."""
+
+    # Retry policy: safe (GET/HEAD) or explicit idempotency key present.
+    safe_to_retry = method.upper() in {"GET", "HEAD"} or "Idempotency-Key" in headers
+    if not safe_to_retry or max_retries <= 1:
+        return await client.request(method, url, headers=headers, content=body)
+
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            response = await client.request(method, url, headers=headers, content=body)
+            return response
+        except httpx.RequestError as exc:
+            last_exc = exc
+            logger.warning(
+                "OpenAI proxy attempt %d/%d failed: %s", attempt + 1, max_retries, exc
+            )
+            if attempt < max_retries - 1:
+                await _sleep_backoff(attempt)
+    # All retries exhausted
+    raise last_exc  # type: ignore[misc]
 
 
-def get_openai_api_key() -> str:
-    """Get OpenAI API key from environment variables."""
+# ---------------------------------------------------------------------------
+# Wildcard proxy endpoint
+# ---------------------------------------------------------------------------
+
+@router.api_route("/v1/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def openai_proxy(full_path: str, request: Request):
+    """Wildcard handler that proxies any /v1/* call to api.openai.com."""
+
+    if not OPENAI_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OpenAI API key not configured on server",
+        )
+
+    # ------------------------------------------------------------------
+    # Assemble outbound request details
+    # ------------------------------------------------------------------
+    query_string: str | bytes = request.url.query
+    target_url = f"https://api.openai.com/v1/{full_path}"
+    if query_string:
+        target_url += f"?{query_string}"
+
+    # Copy headers except `host`; inject Authorization (live key)
+    outbound_headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(
-            status_code=500, 
-            detail="OpenAI API key not configured on server"
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured on server")
+    outbound_headers["Authorization"] = f"Bearer {api_key}"
+
+    body = await request.body()
+
+    # Detect streaming: ?stream=true || JSON {"stream": true}
+    is_stream = request.query_params.get("stream") in {"true", "1"}
+    if not is_stream and request.headers.get("content-type", "").startswith("application/json"):
+        try:
+            payload = json.loads(body or b"{}") if isinstance(body, (bytes, bytearray)) else body  # type: ignore[arg-type]
+            if isinstance(payload, dict):
+                is_stream = bool(payload.get("stream"))
+        except (ValueError, TypeError):
+            pass
+
+    async with httpx.AsyncClient(timeout=PROXY_TIMEOUT) as client:
+        # Streaming logic ------------------------------------------------
+        if is_stream:
+            # Use context manager manually so we can forward chunks while controlling lifetime.
+            upstream_cm = client.stream(
+                request.method, target_url, headers=outbound_headers, content=body
+            )
+            upstream = await upstream_cm.__aenter__()
+
+            async def _aiter():  # type: ignore[return-value]
+                try:
+                    try:
+                        async for chunk in upstream.aiter_raw():
+                            yield chunk
+                    except httpx.StreamConsumed:
+                        # Fallback for cases where the response body was eagerly read (e.g. mock transport).
+                        if upstream.content:
+                            yield upstream.content
+                finally:
+                    # Ensure the upstream connection is closed when client side stops reading.
+                    await upstream_cm.__aexit__(None, None, None)
+
+            # Strip hop-by-hop headers from upstream before forwarding.
+            forwarded_headers = _strip_hop_headers(upstream.headers)
+            return StreamingResponse(
+                _aiter(),
+                status_code=upstream.status_code,
+                headers=forwarded_headers,
+            )
+
+        # Non-streaming logic -------------------------------------------
+        resp = await _forward_with_retries(
+            client,
+            request.method,
+            target_url,
+            outbound_headers,
+            body,
+            MAX_RETRIES,
         )
-    return api_key
-
-
-@router.post("/completion", response_model=ChatResponse)
-async def chat_completion(request: ChatRequest) -> ChatResponse:
-    """
-    Secure proxy for OpenAI chat completions.
-    
-    This endpoint handles OpenAI API calls on behalf of the frontend,
-    keeping the API key secure on the backend only.
-    """
-    logger.info(f"Chat completion requested with {len(request.messages)} messages")
-    
-    try:
-        api_key = get_openai_api_key()
-        
-        # Build system prompt with context
-        system_message = build_system_prompt(request.portfolio_context, request.scratchpad_context)
-        
-        # Prepare messages for OpenAI
-        openai_messages = []
-        if system_message:
-            openai_messages.append({
-                "role": "system",
-                "content": system_message
-            })
-        
-        # Add user messages
-        for msg in request.messages:
-            openai_messages.append({
-                "role": msg.role,
-                "content": msg.content
-            })
-        
-        # Call OpenAI API
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": request.model,
-                    "messages": openai_messages,
-                    "max_tokens": request.max_tokens,
-                    "temperature": request.temperature
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"OpenAI API error: {response.status_code} - {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"OpenAI API error: {response.text}"
-                )
-            
-            result = response.json()
-            
-            # Extract response
-            message_content = result["choices"][0]["message"]["content"]
-            usage = result.get("usage", {})
-            
-            logger.info(f"Chat completion successful, tokens used: {usage.get('total_tokens', 'unknown')}")
-            
-            return ChatResponse(
-                message=message_content,
-                usage=usage
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in chat completion: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
+        forwarded_headers = _strip_hop_headers(resp.headers)
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            headers=forwarded_headers,
         )
 
 
-def build_system_prompt(portfolio_context: Optional[Dict[str, Any]], scratchpad_context: Optional[str]) -> str:
-    """Build system prompt with portfolio and scratchpad context."""
-    
-    base_prompt = """You are an advanced AI assistant specializing in cryptocurrency portfolio analysis and Hedera network DeFi protocols. You have access to comprehensive portfolio data, market statistics, and DeFi position information.
+# ---------------------------------------------------------------------------
+# Health endpoint (kept for backward compatibility)
+# ---------------------------------------------------------------------------
 
-Your expertise includes:
-- Portfolio composition analysis and optimization recommendations
-- Risk assessment across different cryptocurrency holdings
-- DeFi protocol analysis (SaucerSwap, Bonzo Finance) 
-- Market trend interpretation and technical analysis
-- Hedera network ecosystem insights
-
-Provide detailed, actionable insights based on the data provided. Be specific about numbers, percentages, and concrete recommendations."""
-
-    context_parts = [base_prompt]
-    
-    if portfolio_context:
-        context_parts.append(f"\n**Portfolio Context:**\n{format_portfolio_context(portfolio_context)}")
-    
-    if scratchpad_context:
-        context_parts.append(f"\n**Current Session Context:**\n{scratchpad_context}")
-        
-    return "\n".join(context_parts)
-
-
-def format_portfolio_context(portfolio: Dict[str, Any]) -> str:
-    """Format portfolio data for system prompt."""
-    if not portfolio:
-        return "No portfolio data available."
-    
-    context = []
-    
-    if "holdings" in portfolio and portfolio["holdings"]:
-        context.append(f"Portfolio Holdings ({len(portfolio['holdings'])} tokens):")
-        for holding in portfolio["holdings"][:10]:  # Top 10 holdings
-            symbol = holding.get("symbol", "Unknown")
-            amount = holding.get("amount", 0)
-            usd_value = holding.get("usd", 0)
-            percentage = holding.get("percent", 0)
-            context.append(f"- {symbol}: {amount:.4f} tokens (${usd_value:.2f}, {percentage:.1f}%)")
-    
-    if "totalUsd" in portfolio:
-        context.append(f"\nTotal Portfolio Value: ${portfolio['totalUsd']:.2f}")
-    
-    return "\n".join(context)
-
-
-@router.get("/health")
+@router.get("/openai/health")
 async def health_check():
-    """Health check for chat service."""
     try:
-        # Check if OpenAI API key is configured
-        api_key = os.getenv("OPENAI_API_KEY")
-        has_api_key = bool(api_key and api_key != "PLACEHOLDER_FOR_BACKEND_INTEGRATION")
-        
+        configured = bool(os.getenv("OPENAI_API_KEY"))
+        return {"status": "healthy", "openai_configured": configured}
+    except Exception as exc:  # pragma: no cover
+        logger.exception("OpenAI health check failed: %s", exc)
         return {
-            "status": "healthy",
-            "openai_configured": has_api_key,
-            "timestamp": "2024-01-01T00:00:00Z"  # Could use actual timestamp
-        }
-    except Exception as e:
-        logger.error(f"Chat health check failed: {e}")
-        return {
-            "status": "unhealthy", 
-            "error": str(e),
-            "openai_configured": False
+            "status": "unhealthy",
+            "openai_configured": False,
+            "error": str(exc),
         }
