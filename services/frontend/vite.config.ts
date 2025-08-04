@@ -33,7 +33,7 @@ export default defineConfig({
     open: false,
     fs: {
       strict: true,
-      allow: ['src', 'public'], // Minimal for dev only
+      allow: ['src', 'public', 'node_modules'], // Include node_modules for CSS like KaTeX
       deny: ['appSettings.json', '.env*', '../*', '*.config.*']
     },
     proxy: {

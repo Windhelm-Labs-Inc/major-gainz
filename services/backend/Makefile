@@ -42,6 +42,10 @@ test: poetry-setup
 	@echo "🧪 Running backend tests …"
 	@poetry run pytest tests/ -v
 
+live-test: poetry-setup
+	@echo "🔌 Running live OpenAI proxy test (may incur cost) …"
+	@poetry run pytest -m openai_live tests/integration/test_openai_live_proxy.py -v
+
 # Open subshell with env vars & poetry venv activated
 env-shell: poetry-setup
 	@echo "🔒 Spawning subshell (exit to return)"

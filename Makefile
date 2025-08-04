@@ -9,32 +9,30 @@ endif
 # Ports can be overridden: `make dev BACKEND_PORT=8001`
 BACKEND_PORT ?= 8000
 FRONTEND_PORT ?= 8080
+RAG_PORT ?= 9090
 
 # --- Environment Sync Functions ------------------------------------------
 
-# Sync top-level .env to service-specific .env files
-# sync-env target has been deprecated
-
-	
-# @if [ -f .env ]; then \
-# 	echo "# Auto-generated from top-level .env - DO NOT EDIT MANUALLY" > services/backend/.env; \
-# 	echo "# Use the top-level .env file to make changes" >> services/backend/.env; \
-# 	echo "" >> services/backend/.env; \
-# 	grep -E "^(OPENAI_API_KEY|DATABASE_URL|SAUCER_SWAP_API_KEY|HEDERA_NETWORK|DEFI_TEST_MODE|UVICORN_HOST|UVICORN_LOG_LEVEL|CORS_ORIGINS)=" .env >> services/backend/.env 2>/dev/null || true; \
-# 	echo "# Auto-generated from top-level .env - DO NOT EDIT MANUALLY" > services/frontend/.env.local; \
-# 	echo "# Use the top-level .env file to make changes" >> services/frontend/.env.local; \
-# 	echo "" >> services/frontend/.env.local; \
-# 	grep -E "^(VITE_WALLETCONNECT_PROJECT_ID|VITE_HEDERA_NETWORK)=" .env >> services/frontend/.env.local 2>/dev/null || true; \
-# 	echo "✅ Environment variables synced to services"; \
-# else \
-# 	echo "❌ Top-level .env file not found. Copy .env.example to .env first."; \
-# 	exit 1; \
-# fi
+# Source and export environment variables into a new interactive shell
+# Usage: `make env-export` – opens a subshell with all variables from .env
+# Exit the subshell to return to your original shell.
+env-export:
+	@if [ -f .env ]; then \
+		echo "🔒 Opening subshell with .env loaded (type 'exit' to return)"; \
+		bash -c 'set -a; . .env; set +a; exec $${SHELL:-bash} -i'; \
+	else \
+		echo "❌ .env file not found"; \
+		exit 1; \
+	fi
 
 # --- Backend --------------------------------------------------------------
 
 backend-dev:
 	cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)
+
+# --- RAG MCP Service -------------------------------------------------------
+rag-dev:
+	cd services/agent_support && poetry run python -m agent_support.hedera_rag_server.server --host 0.0.0.0 --port $(RAG_PORT)
 
 # --- Frontend -------------------------------------------------------------
 
@@ -55,31 +53,38 @@ frontend-dev-secure:
 # Ctrl+C will stop both (frontend sends INT; backend trap handled by make).
 
 dev: frontend-install
-	# Run backend + frontend with proper signal handling
+	# Run backend + RAG + frontend with proper signal handling
 	bash -c '\
 	  set -e; \
 	  cleanup() { \
 	    echo ""; \
 	    echo "Shutting down services..."; \
-	    if [ ! -z "$$BACK_PID" ] && kill -0 $$BACK_PID 2>/dev/null; then \
-	      echo "Stopping backend (PID: $$BACK_PID)..."; \
-	      kill $$BACK_PID 2>/dev/null || true; \
-	      wait $$BACK_PID 2>/dev/null || true; \
-	    fi; \
+	    for pid in $$BACK_PID $$RAG_PID; do \
+	      if [ -n "$$pid" ] && kill -0 $$pid 2>/dev/null; then \
+	        echo "Stopping PID $$pid ..."; \
+	        kill $$pid 2>/dev/null || true; \
+	        wait $$pid 2>/dev/null || true; \
+	      fi; \
+	    done; \
 	    echo "Services stopped."; \
 	  }; \
 	  trap cleanup INT TERM EXIT; \
-	  echo "Starting backend..."; \
+	  echo "Starting backend ..."; \
 	  (cd services/backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
 	  BACK_PID=$$!; \
-	  echo "Waiting for backend to start..."; \
 	  sleep 2; \
-	  echo "Starting frontend..."; \
-	  echo "Backend PID: $$BACK_PID"; \
-	  echo "Frontend: http://0.0.0.0:$(FRONTEND_PORT)"; \
-	  echo "Backend: http://0.0.0.0:$(BACKEND_PORT)"; \
+	  echo "Starting RAG server ..."; \
+	  (cd services/agent_support && poetry run python -m agent_support.hedera_rag_server.server --host 0.0.0.0 --port $(RAG_PORT)) & \
+	  RAG_PID=$$!; \
+	  sleep 2; \
+	  echo "Starting frontend ..."; \
+	  echo "Backend PID:  $$BACK_PID"; \
+	  echo "RAG PID:      $$RAG_PID"; \
+	  echo "Frontend URL: http://0.0.0.0:$(FRONTEND_PORT)"; \
+	  echo "Backend  URL: http://0.0.0.0:$(BACKEND_PORT)"; \
+	  echo "RAG      URL: http://0.0.0.0:$(RAG_PORT)/health"; \
 	  echo ""; \
-	  echo "Press Ctrl+C to stop both services"; \
+	  echo "Press Ctrl+C to stop all services"; \
 	  echo ""; \
 	  cd services/frontend && npm run dev -- --port $(FRONTEND_PORT) --host 0.0.0.0; \
 	'
@@ -116,7 +121,7 @@ dev-secure: frontend-install
 	  (cd services/frontend && npm run preview -- --port $(FRONTEND_PORT) --host 0.0.0.0); \
 	'
 
-.PHONY: backend-dev frontend-install frontend-build frontend-dev frontend-dev-secure dev dev-secure
+.PHONY: backend-dev rag-dev frontend-install frontend-build frontend-dev frontend-dev-secure dev dev-secure
 
 # Run backend Python tests via Poetry / pytest
 backend-poetry-setup:

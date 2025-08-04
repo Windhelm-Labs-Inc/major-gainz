@@ -1,0 +1,93 @@
+? Title
+ Calling Smart Contracts: Invoking Functions and Reading Return Values on Hedera
+
+? Summary
+ This document provides a comprehensive overview of how to invoke smart contract functions on the Hedera network and read their return values. It explores different invocation types, outlines the difference between contract calls and transactions, details how to encode function parameters and decode return types, and explains the mechanisms for querying smart contracts for state. The guide includes practical examples and key differences from Ethereum.
+
+? Sections
+
+
+Contract Invocation Types on Hedera
+On Hedera, smart contracts can be interacted with using two primary invocation types:
+1. Contract Call (Read-Only): Executed via ContractCallQuery. These queries are free and do not change the state of the contract. Suitable for retrieving data.
+
+2. Contract Execute (State-Changing): Executed via ContractExecuteTransaction. These are paid transactions and require gas. Used for operations that alter state.
+
+In Solidity, read-only functions are declared with view or pure, while functions modifying state are left without those modifiers. On Hedera, these mappings apply directly but require distinct SDK methods to interact.
+Each invocation requires the contract ID (e.g., 0.0.12345) and encoded function parameters. For example, a read query might look like:
+await new ContractCallQuery()
+    .setContractId("0.0.12345")
+    .setFunction("getCounter")
+    .setGas(100_000)
+    .execute(client);
+
+For a transaction:
+await new ContractExecuteTransaction()
+    .setContractId("0.0.12345")
+    .setGas(100_000)
+    .setFunction("increment")
+    .execute(client);
+
+
+Encoding Parameters and Function Selectors
+All smart contract functions are called by encoding a function selector and its parameters:
+? The function selector is the first 4 bytes of the keccak256 hash of the function signature.
+
+? Parameters are ABI-encoded as per the Solidity ABI specification.
+
+On Hedera, SDKs such as JavaScript, Go, Rust, and Swift provide helpers like ContractFunctionParameters or utilities to encode these automatically. For example:
+new ContractFunctionParameters().addUint256(42).addString("Hedera")
+
+This encoding becomes part of the payload for both call queries and execute transactions.
+
+Decoding Return Values
+Smart contract functions that return values require decoding the result using SDK-specific methods:
+? In JavaScript: result.getUint256(0) or result.getString(0)
+
+? In Swift: contractCallResult.getString(0)
+
+? In Go: result.GetString(0) or result.GetInt64(0)
+
+? In Rust/C++: SDKs expose function result structs and conversion utilities.
+
+Each return value corresponds to the Solidity function's return type. If a function returns multiple values, the SDK must parse each by index.
+For example, calling a getUser(uint256) function that returns (string name, uint age) requires:
+let name = result.getString(0);
+let age = result.getUint256(1);
+
+
+Execution Context and Gas Considerations
+Each transaction must specify:
+? Gas Limit: Estimate of computational effort allowed. Too low and the call fails.
+
+? Max Fee: Controls how much the client is willing to spend on the call.
+
+? Payable Value: For payable Solidity functions, set setPayableAmount(Hbar) in execute transactions.
+
+Gas estimation can be done via dry-run tools or MirrorNodeContractEstimateGasQuery. On Hedera, gas limits are strictly enforced, and state-altering calls are finalized through consensus.
+Contracts that are expected to be called often should be optimized for minimal gas usage.
+
+Special System Contracts and Native Integration
+Hedera exposes native services through system contracts at reserved EVM addresses:
+? 0x167: Hedera Token Service (HTS)
+
+? 0x16a: Hedera Account Service (HAS)
+
+? 0x168: Exchange Rate
+
+? 0x169: PRNG
+
+Calls to these precompiled contracts behave like standard Solidity calls but invoke Hedera-native logic behind the scenes.
+Example usage:
+IHederaTokenService(0x167).getFungibleTokenInfo(address token)
+
+From the client, encode the selector and parameters just as with any EVM contract.
+
+Contextual Notes
+? For best practice, pre-deploy test contracts and use ContractFunctionParameters to manage ABI encoding safely.
+
+? Hedera's SDKs offer tools for both development and simulation. Use mirror-node endpoints for querying historical data.
+
+? JSON-RPC-compatible tools (like Hardhat and Remix) also support Hedera via the hedera-json-rpc-relay.
+
+
