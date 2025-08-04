@@ -12,8 +12,12 @@ interface Message {
 
 interface ChatWindowProps {
   selectedAddress: string
-  hederaNetwork: 'mainnet'
+  hederaNetwork: 'mainnet' | 'testnet' 
   portfolio?: Portfolio
+  /**
+   * Short-lived context that reflects the user’s current UI snapshot
+   * (e.g., selected token, percentile stats, etc.)
+   */
   scratchpadContext?: string
 }
 
@@ -22,259 +26,397 @@ interface ReturnsStats {
   meanReturn: number
   stdReturn: number
   days: number
-  dailyReturns: number[] // 14 days of daily simple returns
+  /** 14 days of daily *log* returns */
+  dailyReturns: number[]
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork: _hederaNetwork, portfolio, scratchpadContext }) => {
+const FAKE_OPENAI_KEY =
+  'NOTAREALKEYSECRETSCRETSTOPLOOKINGATALLMYSECRETSAHHHHHHH!'
+
+const ChatWindow: React.FC<ChatWindowProps> = ({
+  selectedAddress,
+  hederaNetwork,
+  portfolio,
+  scratchpadContext,
+}) => {
+  /* --------------------------------------------------------------------- */
+  /* State                                                                 */
+  /* --------------------------------------------------------------------- */
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       text: 'Welcome to Quick Origins POC! This is a sample chat interface.',
       sender: 'system',
-      timestamp: new Date()
-    }
+      timestamp: new Date(),
+    },
   ])
   const [inputValue, setInputValue] = useState('')
 
-  // Lazy-initialised agent executor instance
-  const [_agentExecutor, setAgentExecutor] = useState<any>(null)
-  
-  // Store returns statistics
-  const [_returnsStats, setReturnsStats] = useState<ReturnsStats[]>([])
+  // Lazy-initialised LangChain agent executor
+  const [agentExecutor, setAgentExecutor] = useState<any>(null)
 
-  // Track the last scratchpad content that was sent to the agent
+  // Cached 30-day return statistics for portfolio tokens
+  const [returnsStats, setReturnsStats] = useState<ReturnsStats[]>([])
+
+  // Track last scratchpad content that was sent to the agent
   const lastSentScratchpad = useRef<string>('')
 
-  // Only reset agent when address or portfolio changes (not for scratchpad updates)
+  /* --------------------------------------------------------------------- */
+  /* Effects                                                                */
+  /* --------------------------------------------------------------------- */
   React.useEffect(() => {
+    // Whenever the address OR portfolio shape changes we rebuild the agent
     console.log('[ChatWindow] selectedAddress or portfolio changed', selectedAddress)
     setAgentExecutor(null)
-    
-    // Fetch returns statistics when portfolio changes
+
     if (portfolio && portfolio.holdings.length > 0) {
-      console.log('[ChatWindow] Fetching returns statistics...')
-      fetchReturnsStats()
+      fetchReturnsStats(portfolio)
     }
   }, [selectedAddress, portfolio?.holdings.length])
 
-  const fetchReturnsStats = async () => {
+  /* --------------------------------------------------------------------- */
+  /* Helpers                                                                */
+  /* --------------------------------------------------------------------- */
+  const fetchReturnsStats = async (p: Portfolio) => {
     console.log('[ChatWindow] Fetching returns statistics...')
     const stats: ReturnsStats[] = []
-    
-    // Get unique symbols from portfolio
-    const symbols = [...new Set(portfolio?.holdings.map(h => h.symbol) || [])]
-    
+
+    const symbols = [...new Set(p.holdings.map((h) => h.symbol))]
+
     for (const symbol of symbols) {
       try {
+        const base = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
         const [meanResp, stdResp, logReturnsResp] = await Promise.all([
-                  fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/ohlcv/${symbol}/mean_return?days=30`),
-        fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/ohlcv/${symbol}/return_std?days=30`),
-        fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/ohlcv/${symbol}/log_returns?days=14`)
+          fetch(`${base}/ohlcv/${symbol}/mean_return?days=30`),
+          fetch(`${base}/ohlcv/${symbol}/return_std?days=30`),
+          fetch(`${base}/ohlcv/${symbol}/log_returns?days=14`),
         ])
-        
+
         if (meanResp.ok && stdResp.ok && logReturnsResp.ok) {
           const meanData = await meanResp.json()
           const stdData = await stdResp.json()
           const logReturnsData = await logReturnsResp.json()
-          
+
           stats.push({
             token: symbol,
             meanReturn: meanData.mean_return,
             stdReturn: stdData.std_return,
             days: 30,
-            dailyReturns: logReturnsData.log_returns
+            dailyReturns: logReturnsData.log_returns,
           })
         }
       } catch (error) {
         console.warn(`[ChatWindow] Failed to fetch stats for ${symbol}:`, error)
       }
     }
-    
+
     setReturnsStats(stats)
     console.log('[ChatWindow] Returns statistics loaded:', stats)
   }
 
-  // Simplified chat function that calls backend proxy
-  const sendChatMessage = async (userMessage: string): Promise<string> => {
-    try {
-      console.log('[ChatWindow] Sending message to backend proxy...')
-      
-      const response = await fetch('/chat/completion', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: 'user',
-              content: userMessage
-            }
-          ],
-          model: 'gpt-4o',
-          max_tokens: 2000,
-          temperature: 0.7,
-          portfolio_context: portfolio,
-          scratchpad_context: scratchpadContext
-        })
-      })
+  /**
+   * Dynamically initialises the Hedera-enabled LangChain agent.
+   * Re-invoked when `agentExecutor` state is reset.
+   */
+  const initAgent = async () => {
+    if (agentExecutor) return agentExecutor
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`Backend chat API error: ${response.status} - ${errorText}`)
-      }
+    console.log('[ChatWindow] Initialising agent…')
 
-      const result = await response.json()
-      return result.message
+    // Dynamic imports keep initial bundle size small
+    const [{ HederaLangchainToolkit }, { ChatOpenAI }] = await Promise.all([
+      import('hedera-agent-kit'),
+      import('@langchain/openai'),
+    ])
+    const { Client, LedgerId } = await import('@hashgraph/sdk')
+    // @ts-ignore – CommonJS interop
+    const { ChatPromptTemplate } = await import('@langchain/core/prompts')
+    // @ts-ignore – type packages lag behind
+    const { AgentExecutor, createToolCallingAgent } = await import('langchain/agents')
+    const { DynamicTool } = await import('@langchain/core/tools')
 
-    } catch (error) {
-      console.error('[ChatWindow] Chat API error:', error)
-      throw error
+    /* --------------------------------------------------------- */
+    /* Polyfill OPENAI_API_KEY env (browser)                     */
+    /* --------------------------------------------------------- */
+    if (typeof window !== 'undefined') {
+      // @ts-ignore
+      window.process ??= { env: {} }
+      // @ts-ignore
+      window.process.env.OPENAI_API_KEY = FAKE_OPENAI_KEY
     }
+
+    /* --------------------------------------------------------- */
+    /* LLM (pointing to backend proxy)                           */
+    /* --------------------------------------------------------- */
+    const baseURL = `${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/v1`
+    console.log('[ChatWindow] Using baseURL:', baseURL)
+    console.log('[ChatWindow] VITE_BACKEND_URL:', import.meta.env.VITE_BACKEND_URL)
+    
+    const llm = new ChatOpenAI({
+      modelName: 'gpt-4o',
+      temperature: 0.7,
+      openAIApiKey: FAKE_OPENAI_KEY,
+      configuration: {
+        baseURL,
+      },
+    })
+
+    /* --------------------------------------------------------- */
+    /* Hedera client                                             */
+    /* --------------------------------------------------------- */
+    const client =
+      hederaNetwork === 'mainnet'
+        ? Client.forMainnet().setLedgerId(LedgerId.MAINNET)
+        : Client.forTestnet().setLedgerId(LedgerId.TESTNET)
+
+    const toolkit = new HederaLangchainToolkit({
+      client,
+      configuration: { tools: [] },
+    })
+
+    /* --------------------------------------------------------- */
+    /* Prompt construction                                       */
+    /* --------------------------------------------------------- */
+    const portfolioSummary = portfolio
+      ? portfolio.holdings
+          .map((h) => `${h.symbol}: ${h.amount.toFixed(4)} (${h.percent.toFixed(2)}%)`)
+          .join(', ')
+      : 'Portfolio not loaded.'
+
+    const portfolioTable = portfolio
+      ? portfolio.holdings
+          .map(
+            (h) =>
+              `${h.symbol}\t${h.amount.toFixed(4)}\t$${h.usd.toFixed(2)}\t${h.percent.toFixed(2)}%`,
+          )
+          .join('\n')
+      : ''
+
+    const returnsStatsSummary =
+      returnsStats.length > 0
+        ? returnsStats
+            .map(
+              (stat) =>
+                `${stat.token}: Avg Return ${(stat.meanReturn * 100).toFixed(3)}%/day, Volatility ${(stat.stdReturn * 100).toFixed(3)}%/day, 14-day log returns available`,
+            )
+            .join('\n')
+        : 'Returns statistics not available.'
+
+    const prompt = ChatPromptTemplate.fromMessages([
+      [
+        'system',
+        `You are an elite FRM Financial Engineer and Hedera assistant on ${hederaNetwork}. The user's currently selected address is ${selectedAddress || 'not set'}.` +
+          `\n\nCurrent snapshot memory:\n${scratchpadContext || 'No active context'}\n` +
+          `\nCurrent portfolio (USD terms):\nTOKEN\tAMOUNT\tUSD\t%\n${portfolioTable || 'N/A'}\n` +
+          `Summary: ${portfolioSummary}` +
+          `\n\nReturns Statistics (30-day averages):\n${returnsStatsSummary}` +
+          `\n\nIMPORTANT: Daily returns data provided via get_returns_stats tool contains LOG RETURNS (natural logarithm), not simple returns. ` +
+          `Each token has 14 days of daily log returns available for detailed analysis.` +
+          `\n\nUse this portfolio and returns data to provide informed financial analysis and recommendations.`,
+      ],
+      ['placeholder', '{chat_history}'],
+      ['human', '{input}'],
+      ['placeholder', '{agent_scratchpad}'],
+    ])
+
+    /* --------------------------------------------------------- */
+    /* Tool wiring                                               */
+    /* --------------------------------------------------------- */
+    const tools = toolkit.getTools()
+    console.log('[ChatWindow] Base Hedera tools:', tools.length)
+
+    if (portfolio) {
+      tools.push(
+        new DynamicTool({
+          name: 'get_portfolio',
+          description: 'Returns the current USD-valued portfolio for the user',
+          func: async () => JSON.stringify(portfolio),
+        }),
+      )
+    }
+
+    if (returnsStats.length > 0) {
+      tools.push(
+        new DynamicTool({
+          name: 'get_returns_stats',
+          description:
+            'Returns 30-day mean, standard deviation, and 14 days of daily LOG RETURNS for portfolio tokens.',
+          func: async () => JSON.stringify(returnsStats),
+        }),
+      )
+    }
+
+    const agent = createToolCallingAgent({ llm, tools, prompt })
+    const executor = new AgentExecutor({ agent, tools })
+    console.log('[ChatWindow] Agent initialised')
+    setAgentExecutor(executor)
+    return executor
   }
 
-  // Note: Agent functionality moved to secure backend proxy
-  // All OpenAI API calls now go through /chat/completion endpoint
-
+  /* --------------------------------------------------------------------- */
+  /* Event handlers                                                         */
+  /* --------------------------------------------------------------------- */
   const handleSendMessage = async () => {
     if (inputValue.trim() === '') return
 
-    // Check if scratchpad has changed since the last message
     const currentScratchpad = scratchpadContext || 'No active context'
     const scratchpadChanged = currentScratchpad !== lastSentScratchpad.current
-    
-    // Prepare the message with scratchpad context only if it has changed
+
     let messageToSend = inputValue.trim()
     if (scratchpadChanged && currentScratchpad !== 'No active context') {
-      messageToSend = `${messageToSend}\n\n[Updated Context: ${currentScratchpad}]`
-      console.log('[ChatWindow] Scratchpad changed, including in message:', currentScratchpad)
-      // Update the last sent scratchpad reference
+      messageToSend += `\n\n[Updated Context: ${currentScratchpad}]`
       lastSentScratchpad.current = currentScratchpad
     } else if (scratchpadChanged) {
-      console.log('[ChatWindow] Scratchpad cleared since last message')
       lastSentScratchpad.current = currentScratchpad
-    } else {
-      console.log('[ChatWindow] Scratchpad unchanged, not including in message')
     }
 
     const userMessage: Message = {
       id: messages.length + 1,
-      text: inputValue, // Show original user input in UI
+      text: inputValue,
       sender: 'user',
-      timestamp: new Date()
+      timestamp: new Date(),
     }
 
-    console.log('[ChatWindow] User message', userMessage)
-    if (scratchpadChanged && currentScratchpad !== 'No active context') {
-      console.log('[ChatWindow] Message with updated context sent to agent:', messageToSend)
-    }
-    setMessages(prev => [...prev, userMessage])
+    setMessages((prev) => [...prev, userMessage])
     setInputValue('')
 
     try {
-      // Use backend proxy instead of local agent
-      const response = await sendChatMessage(messageToSend)
-      console.log('[ChatWindow] Backend proxy response', response)
+      const executor = await initAgent()
+      const response = await executor.invoke({ input: messageToSend })
+      const reply = response?.output ?? JSON.stringify(response)
 
       const systemMessage: Message = {
         id: userMessage.id + 1,
-        text: response,
+        text: reply,
         sender: 'system',
-        timestamp: new Date()
+        timestamp: new Date(),
       }
-      setMessages(prev => [...prev, systemMessage])
+      setMessages((prev) => [...prev, systemMessage])
     } catch (err: any) {
-      console.error('[ChatWindow] Backend proxy error', err)
+      console.error('[ChatWindow] Agent error', err)
       const errorMessage: Message = {
         id: userMessage.id + 1,
-        text: `Error: ${err.message || 'Failed to process request. Check backend connection.'}`,
+        text: 'Error processing request. See console log for details.',
         sender: 'system',
-        timestamp: new Date()
+        timestamp: new Date(),
       }
-      setMessages(prev => [...prev, errorMessage])
+      setMessages((prev) => [...prev, errorMessage])
     }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      console.log('[ChatWindow] Enter pressed')
       e.preventDefault()
       handleSendMessage()
     }
   }
 
   const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
     })
   }
 
+  /* --------------------------------------------------------------------- */
+  /* JSX                                                                    */
+  /* --------------------------------------------------------------------- */
   return (
     <div className="chat-container">
       <div className="chat-window">
-        {messages.map(message => (
-          <div 
-            key={message.id} 
-            className={`message ${message.sender}`}
-          >
+        {messages.map((message) => (
+          <div key={message.id} className={`message ${message.sender}`}>
             <div className="message-content">
               <div className="message-text">
                 {message.sender === 'system' ? (
-                  <ReactMarkdown 
+                  <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      table: ({children, ...props}) => (
-                        <table className="markdown-table" {...props}>{children}</table>
+                      table: ({ children, ...props }) => (
+                        <table className="markdown-table" {...props}>
+                          {children}
+                        </table>
                       ),
-                      thead: ({children, ...props}) => (
-                        <thead className="markdown-thead" {...props}>{children}</thead>
+                      thead: ({ children, ...props }) => (
+                        <thead className="markdown-thead" {...props}>
+                          {children}
+                        </thead>
                       ),
-                      tbody: ({children, ...props}) => (
-                        <tbody className="markdown-tbody" {...props}>{children}</tbody>
+                      tbody: ({ children, ...props }) => (
+                        <tbody className="markdown-tbody" {...props}>
+                          {children}
+                        </tbody>
                       ),
-                      tr: ({children, ...props}) => (
-                        <tr className="markdown-tr" {...props}>{children}</tr>
+                      tr: ({ children, ...props }) => (
+                        <tr className="markdown-tr" {...props}>
+                          {children}
+                        </tr>
                       ),
-                      th: ({children, ...props}) => (
-                        <th className="markdown-th" {...props}>{children}</th>
+                      th: ({ children, ...props }) => (
+                        <th className="markdown-th" {...props}>
+                          {children}
+                        </th>
                       ),
-                      td: ({children, ...props}) => (
-                        <td className="markdown-td" {...props}>{children}</td>
+                      td: ({ children, ...props }) => (
+                        <td className="markdown-td" {...props}>
+                          {children}
+                        </td>
                       ),
-                      code: ({children, className, ...props}) => (
-                        <code className={`markdown-code ${className || ''}`} {...props}>{children}</code>
+                      code: ({ children, className, ...props }) => (
+                        <code className={`markdown-code ${className || ''}`} {...props}>
+                          {children}
+                        </code>
                       ),
-                      pre: ({children, ...props}) => (
-                        <pre className="markdown-pre" {...props}>{children}</pre>
+                      pre: ({ children, ...props }) => (
+                        <pre className="markdown-pre" {...props}>
+                          {children}
+                        </pre>
                       ),
-                      h1: ({children, ...props}) => (
-                        <h1 className="markdown-h1" {...props}>{children}</h1>
+                      h1: ({ children, ...props }) => (
+                        <h1 className="markdown-h1" {...props}>
+                          {children}
+                        </h1>
                       ),
-                      h2: ({children, ...props}) => (
-                        <h2 className="markdown-h2" {...props}>{children}</h2>
+                      h2: ({ children, ...props }) => (
+                        <h2 className="markdown-h2" {...props}>
+                          {children}
+                        </h2>
                       ),
-                      h3: ({children, ...props}) => (
-                        <h3 className="markdown-h3" {...props}>{children}</h3>
+                      h3: ({ children, ...props }) => (
+                        <h3 className="markdown-h3" {...props}>
+                          {children}
+                        </h3>
                       ),
-                      ul: ({children, ...props}) => (
-                        <ul className="markdown-ul" {...props}>{children}</ul>
+                      ul: ({ children, ...props }) => (
+                        <ul className="markdown-ul" {...props}>
+                          {children}
+                        </ul>
                       ),
-                      ol: ({children, ...props}) => (
-                        <ol className="markdown-ol" {...props}>{children}</ol>
+                      ol: ({ children, ...props }) => (
+                        <ol className="markdown-ol" {...props}>
+                          {children}
+                        </ol>
                       ),
-                      li: ({children, ...props}) => (
-                        <li className="markdown-li" {...props}>{children}</li>
+                      li: ({ children, ...props }) => (
+                        <li className="markdown-li" {...props}>
+                          {children}
+                        </li>
                       ),
-                      blockquote: ({children, ...props}) => (
-                        <blockquote className="markdown-blockquote" {...props}>{children}</blockquote>
+                      blockquote: ({ children, ...props }) => (
+                        <blockquote className="markdown-blockquote" {...props}>
+                          {children}
+                        </blockquote>
                       ),
-                      strong: ({children, ...props}) => (
-                        <strong className="markdown-strong" {...props}>{children}</strong>
+                      strong: ({ children, ...props }) => (
+                        <strong className="markdown-strong" {...props}>
+                          {children}
+                        </strong>
                       ),
-                      em: ({children, ...props}) => (
-                        <em className="markdown-em" {...props}>{children}</em>
-                      )
+                      em: ({ children, ...props }) => (
+                        <em className="markdown-em" {...props}>
+                          {children}
+                        </em>
+                      ),
                     }}
                   >
                     {message.text}
@@ -283,14 +425,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork:
                   <span>{message.text}</span>
                 )}
               </div>
-              <span className="message-time">
-                {formatTime(message.timestamp)}
-              </span>
+              <span className="message-time">{formatTime(message.timestamp)}</span>
             </div>
           </div>
         ))}
       </div>
-      
+
       <div className="chat-input-area">
         <input
           type="text"
@@ -300,7 +440,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork:
           placeholder="Type your message here..."
           className="chat-input"
         />
-        <button 
+        <button
           onClick={handleSendMessage}
           disabled={inputValue.trim() === ''}
           className="send-btn"
@@ -312,4 +452,4 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ selectedAddress, hederaNetwork:
   )
 }
 
-export default ChatWindow 
+export default ChatWindow

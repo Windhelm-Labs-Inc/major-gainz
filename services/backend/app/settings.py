@@ -19,7 +19,7 @@ console_handler.setLevel(logging.INFO)
 log_file = os.path.join(LOG_DIR, "origins.log")
 file_handler = RotatingFileHandler(
     log_file,
-    maxBytes=1024 * 1024,  # 1MB
+    maxBytes=10 * 1024 * 1024,  # 10MB
     backupCount=4,  # Keep 5 files total (1 current + 4 backups)
 )
 file_handler.setLevel(logging.DEBUG)
