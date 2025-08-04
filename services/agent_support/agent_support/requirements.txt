@@ -1,0 +1,12 @@
+# Core service dependencies
+fastmcp>=2.4.0
+
+# Lightweight RAG stack
+llama-index-core>=0.10.20
+llama-index-embeddings-huggingface>=0.2.0
+sentence-transformers==2.2.2
+
+# The HuggingFace backend pulls in PyTorch – install CPU-only build to keep
+# images slim when containerising the service.
+torch==2.1.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu

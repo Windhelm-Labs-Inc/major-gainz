@@ -41,9 +41,9 @@ RUN mkdir -p /app/services/backend/logs
 # Return to project root
 WORKDIR /app
 
-# Azure provides the port to listen on via WEBSITES_PORT
-
-ENV PORT=${WEBSITES_PORT:-8080}
+# Set the port for the frontend server
+ENV PORT=8080
+ENV WEBSITES_PORT=8080
 
 # Build frontend for production
 WORKDIR /app/services/frontend
