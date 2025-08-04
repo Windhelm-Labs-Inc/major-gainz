@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-// @ts-ignore – missing types
 import remarkMath from 'remark-math';
-// @ts-ignore – missing types
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import usePureChatAgent, { HederaNetwork } from '../hooks/usePureChatAgent';
+import usePureChatPortfolio from '../hooks/usePureChatPortfolio';
 
 interface Message {
   id: number;
@@ -18,23 +17,54 @@ interface Message {
 interface Props {
   personality: string;
   hederaNetwork: HederaNetwork;
+  walletAddress?: string;
+  scratchpadContext?: string;
 }
 
-const PureChatChatWindow: React.FC<Props> = ({ personality, hederaNetwork }) => {
+const PureChatChatWindow: React.FC<Props> = ({ 
+  personality, 
+  hederaNetwork, 
+  walletAddress,
+  scratchpadContext 
+}) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
-      text: 'Welcome to PureChat! Adjust personality on the left and start chatting.',
+      text: 'Welcome to PureChat! Connect a wallet in Settings to enable portfolio-aware responses.',
       sender: 'system',
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState('');
+  const lastSentScratchpad = useRef<string>('');
 
-  const agentExecutor = usePureChatAgent(personality, hederaNetwork);
+  // Fetch portfolio and DeFi data
+  const { portfolio, returnsStats, defiData, loading, error } = usePureChatPortfolio(walletAddress);
+
+  // Create agent with portfolio + DeFi context
+  const agentExecutor = usePureChatAgent(
+    personality, 
+    hederaNetwork, 
+    portfolio, 
+    returnsStats,
+    defiData,
+    scratchpadContext
+  );
 
   const sendMessage = async () => {
     if (!inputValue.trim() || !agentExecutor) return;
+
+    // Handle scratchpad context changes
+    const currentScratchpad = scratchpadContext || 'No active context';
+    const scratchpadChanged = currentScratchpad !== lastSentScratchpad.current;
+
+    let messageToSend = inputValue.trim();
+    if (scratchpadChanged && currentScratchpad !== 'No active context') {
+      messageToSend += `\n\n[Updated Context: ${currentScratchpad}]`;
+      lastSentScratchpad.current = currentScratchpad;
+    } else if (scratchpadChanged) {
+      lastSentScratchpad.current = currentScratchpad;
+    }
 
     const userMsg: Message = {
       id: messages.length + 1,
@@ -42,11 +72,11 @@ const PureChatChatWindow: React.FC<Props> = ({ personality, hederaNetwork }) => 
       sender: 'user',
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages(prev => [...prev, userMsg]);
     setInputValue('');
 
     try {
-      const res = await agentExecutor.invoke({ input: userMsg.text });
+      const res = await agentExecutor.invoke({ input: messageToSend });
       const reply = res?.output ?? JSON.stringify(res);
       const systemMsg: Message = {
         id: userMsg.id + 1,
@@ -54,10 +84,10 @@ const PureChatChatWindow: React.FC<Props> = ({ personality, hederaNetwork }) => 
         sender: 'system',
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, systemMsg]);
+      setMessages(prev => [...prev, systemMsg]);
     } catch (err) {
       console.error('[PureChat] Agent error', err);
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
         {
           id: userMsg.id + 1,
@@ -80,8 +110,28 @@ const PureChatChatWindow: React.FC<Props> = ({ personality, hederaNetwork }) => 
 
   return (
     <div className="purechat-window">
+      {/* Portfolio & DeFi status banner */}
+      {walletAddress && (
+        <div style={{ 
+          padding: '0.5rem', 
+          backgroundColor: loading ? '#fff3cd' : error ? '#f8d7da' : '#d1ecf1',
+          borderBottom: '1px solid #dee2e6',
+          fontSize: '0.875rem'
+        }}>
+          {loading && '📊 Loading portfolio & DeFi data...'}
+          {error && `⚠️ Data unavailable: ${error}`}
+          {portfolio && (
+            <>
+              ✅ Portfolio: $${portfolio.totalValue.toFixed(2)} across ${portfolio.holdings.length} tokens
+              {defiData && ` | DeFi: $${defiData.totalValueLocked.toFixed(2)} TVL in ${defiData.positionCount} positions`}
+            </>
+          )}
+          {walletAddress && <span style={{ float: 'right' }}>🔗 {walletAddress}</span>}
+        </div>
+      )}
+
       <div className="chat-messages">
-        {messages.map((m) => (
+        {messages.map(m => (
           <div key={m.id} className={`message ${m.sender}`}>
             <div className="message-content">
               {m.sender === 'system' ? (
@@ -101,7 +151,7 @@ const PureChatChatWindow: React.FC<Props> = ({ personality, hederaNetwork }) => 
         <input
           type="text"
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={e => setInputValue(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Type your message here..."
         />
