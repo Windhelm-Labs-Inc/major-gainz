@@ -145,7 +145,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     /* --------------------------------------------------------- */
     if (typeof window !== 'undefined') {
       // @ts-ignore
-      window.process ??= { env: {} }
+      window.process ??= { 
+        env: {},
+        platform: 'browser',
+        version: '18.0.0',
+        versions: { node: '18.0.0' }
+      }
+      // Polyfill Node global object for browser so libs like "which" work
+      // @ts-ignore
+      window.global ??= window
       // @ts-ignore
       window.process.env.OPENAI_API_KEY = FAKE_OPENAI_KEY
     }
@@ -249,6 +257,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           func: async () => JSON.stringify(returnsStats),
         }),
       )
+    }
+
+    /* --------------------------------------------------------- */
+    /* Load external MCP tools (Hedera RAG server)               */
+    /* --------------------------------------------------------- */
+    try {
+      const { MultiServerMCPClient } = await import('@langchain/mcp-adapters')
+      const ragUrl =
+        import.meta.env.VITE_RAG_MCP_URL || 'http://127.0.0.1:9090/mcp/'
+      const mcpClient = new MultiServerMCPClient({
+        hedera_rag: {
+          url: ragUrl,
+          transport: 'http',
+        },
+      })
+      const mcpTools = await mcpClient.getTools()
+      const toolNames = mcpTools.map((t: any) => t.name || 'unknown')
+      console.info('[ChatWindow] Connected to Hedera RAG MCP – tools loaded:', toolNames)
+      tools.push(...mcpTools)
+    } catch (err) {
+      console.warn('[ChatWindow] Failed to load MCP tools', err)
     }
 
     const agent = createToolCallingAgent({ llm, tools, prompt })

@@ -31,6 +31,12 @@ RUN rm -f poetry.lock \
     && poetry lock --no-interaction \
     && poetry install --no-interaction --no-root 
 
+# Install Python dependencies for RAG service
+WORKDIR /app/services/agent_support
+RUN poetry install --no-interaction --no-root
+
+WORKDIR /app
+
 # Install Node.js dependencies for frontend
 WORKDIR /app/services/frontend
 RUN npm install
@@ -50,7 +56,7 @@ WORKDIR /app/services/frontend
 RUN npm run build
 
 # Expose only the frontend port (public access)
-EXPOSE $PORT
+EXPOSE $PORT 9090
 
 # Create startup script
 RUN echo '#!/bin/sh\n\
@@ -61,7 +67,7 @@ poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000 &\n\
 BACKEND_PID=$!\n\
 echo "Backend started with PID: $BACKEND_PID"\n\
 \n\
-echo "Starting frontend server..."\n\
+echo "Starting RAG server..."\ncd /app/services/agent_support\npoetry run python -m agent_support.hedera_rag_server.server --host 0.0.0.0 --port 9090 &\nRAG_PID=$!\necho "RAG server started with PID: $RAG_PID"\n\necho "Starting frontend server..."\n\
 cd /app/services/frontend\n\
 npm run preview -- --host 0.0.0.0 --port $PORT &\n\
 FRONTEND_PID=$!\n\
@@ -70,7 +76,7 @@ echo "Frontend started with PID: $FRONTEND_PID"\n\
 # Function to handle shutdown\n\
 cleanup() {\n\
     echo "Shutting down services..."\n\
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true\n\
+    kill $BACKEND_PID $FRONTEND_PID $RAG_PID 2>/dev/null || true\n\
     wait $BACKEND_PID $FRONTEND_PID 2>/dev/null || true\n\
     echo "Services stopped."\n\
 }\n\
@@ -79,7 +85,7 @@ cleanup() {\n\
 trap cleanup TERM INT\n\
 \n\
 # Wait for both processes\n\
-wait $FRONTEND_PID $BACKEND_PID\n\
+wait $FRONTEND_PID $BACKEND_PID $RAG_PID\n\
 ' > /start.sh && chmod +x /start.sh
 
 # Start both backend and frontend servers

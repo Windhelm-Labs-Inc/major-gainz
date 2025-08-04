@@ -16,12 +16,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
+import logging
+
 from hedera_rag_server.config import INDEX_DIR
 from hedera_rag_server.rag_index import (
     _LLAMA_AVAILABLE,
     FACTS,
     EMBED_MODEL_NAME,
 )
+
+logger = logging.getLogger(__name__)
 
 if not _LLAMA_AVAILABLE:  # pragma: no cover – executed during manual invocation
     raise SystemExit(
@@ -48,7 +52,7 @@ KNOWLEDGE_BASE_DIR = PROJECT_ROOT / "knowledge_base"
 def _load_knowledge_documents() -> List[Document]:  # type: ignore[name-defined]
     """Return all documents found under *knowledge_base* (recursively)."""
     if not KNOWLEDGE_BASE_DIR.exists():
-        print("[build-index] Warning: knowledge_base directory not found – only FACTS will be indexed.")
+        logger.warning("knowledge_base directory not found – only FACTS will be indexed.")
         return []
 
     reader = SimpleDirectoryReader(input_dir=str(KNOWLEDGE_BASE_DIR), recursive=True)
@@ -57,7 +61,7 @@ def _load_knowledge_documents() -> List[Document]:  # type: ignore[name-defined]
 
 def main() -> None:
     """Build the vector index and persist it to the configured directory."""
-    print("[build-index] Building vector index …")
+    logger.info("Building vector index …")
     embed = HuggingFaceEmbedding(model_name=EMBED_MODEL_NAME)
     service_ctx = ServiceContext.from_defaults(embed_model=embed, llm=None)
 
@@ -74,7 +78,7 @@ def main() -> None:
     persist_path.mkdir(parents=True, exist_ok=True)
     index.storage_context.persist(str(persist_path))
 
-    print(f"[build-index] Persisted index containing {len(docs)} docs to {persist_path.resolve()}")
+    logger.info("Persisted index containing %s docs to %s", len(docs), persist_path.resolve())
 
 
 if __name__ == "__main__":  # pragma: no cover

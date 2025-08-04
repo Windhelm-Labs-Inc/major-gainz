@@ -14,6 +14,9 @@ from typing import List
 
 from typing import Any, List
 
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     from llama_index.core import VectorStoreIndex, ServiceContext, Document  # type: ignore
     try:
@@ -138,14 +141,19 @@ def query_knowledge(question: str) -> str:
     relevant factual snippets. This keeps the service lightweight while still
     demonstrating the RAG flow.
     """
+    logger.debug("query_knowledge invoked question=%s", question)
     if _LLAMA_AVAILABLE:
         response = _QUERY_ENGINE.query(question)  # type: ignore[name-defined]
+        logger.debug("LLAMA available – returning engine response length=%s", len(str(response)))
         return str(response)
 
     # Fallback: naive keyword match over FACTS
     lower_q = question.lower()
     matches = [fact for fact in FACTS if any(word in fact.lower() for word in lower_q.split())]
     if not matches:
+        logger.debug("No matches found in fallback path")
         return "I'm not sure."
     # Return up to top 3 matches concatenated
-    return " " .join(matches[:3])
+    answer = " ".join(matches[:3])
+    logger.debug("Fallback answer length=%s", len(answer))
+    return answer
