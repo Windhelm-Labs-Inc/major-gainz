@@ -15,7 +15,8 @@ WORKDIR /frontend
 ENV VITE_RAG_MCP_URL=/mcp/
 
 COPY services/frontend/package*.json ./
-RUN npm ci --only=production
+# Install *all* deps (prod + dev) for build
+RUN npm install
 COPY services/frontend/ ./
 RUN npm run build # → /frontend/dist
 
@@ -27,11 +28,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --upgrade pip poetry
 
+# --- Install Python dependencies for each sub-project -------------------
 WORKDIR /build
+
+# Copy only dependency manifests first (better Docker cache utilisation)
 COPY services/backend/pyproject.toml services/backend/poetry.lock* ./backend/
 COPY services/agent_support/pyproject.toml services/agent_support/poetry.lock* ./agent_support/
 COPY services/backend/static/token_holdings/pyproject.toml ./token_holdings/
-RUN poetry install --no-root --only=main
+
+# Install deps for each project (without building the local package itself)
+# Regenerate lock files if pyproject changed, then install
+# Install backend & token_holdings into global site-packages (NumPy 2.x)
+RUN poetry install -C backend --no-root --only=main && \
+    poetry install -C token_holdings --no-root --only=main
+
+# ----- Dedicated virtualenv for agent_support (needs NumPy <1.25) -----
+ENV POETRY_VIRTUALENVS_CREATE=true \
+    POETRY_VIRTUALENVS_IN_PROJECT=true
+RUN poetry lock -C agent_support --no-interaction && \
+    poetry install -C agent_support --no-root --only=main
+
+# Expose the venv path for later stage
+ENV AGENT_VENV_PATH=/build/agent_support/.venv
 
 ########## 3️⃣  Runtime image ###################################################
 FROM python:3.11-slim AS runtime
@@ -42,6 +60,8 @@ WORKDIR /app
 # --- Python env from builder -------------------------------------------------
 COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-deps /usr/local/bin /usr/local/bin
+# Copy dedicated agent_support virtualenv
+COPY --from=python-deps ${AGENT_VENV_PATH} /agent_support_venv
 
 # --- Application code --------------------------------------------------------
 COPY services/backend/app ./services/backend/app
@@ -53,6 +73,7 @@ COPY --from=frontend-builder /frontend/dist ./services/frontend/dist
 
 # --- SQLite databases --------------------------------------------------------
 COPY services/backend/ohlcv.db ./services/backend/ohlcv.db
+COPY services/backend/tokens_enabled.json ./services/backend/tokens_enabled.json
 COPY services/backend/static/token_holdings/token_holdings.db ./services/backend/static/token_holdings/token_holdings.db
 
 RUN mkdir -p ./services/backend/logs
@@ -74,6 +95,8 @@ BACKEND_PID=$!
 
 # 2. RAG server (internal only)  
 cd /app/services/agent_support
+PYTHONPATH=/app/services/agent_support/agent_support:${PYTHONPATH:-} \
+PATH=/agent_support_venv/bin:${PATH} \
 MCP_PORT=${MCP_PORT:-9090} python -m agent_support.hedera_rag_server.server &
 RAG_PID=$!
 

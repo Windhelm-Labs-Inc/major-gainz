@@ -145,12 +145,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     /* --------------------------------------------------------- */
     if (typeof window !== 'undefined') {
       // @ts-ignore
-      window.process ??= { 
-        env: {},
-        platform: 'browser',
-        version: '18.0.0',
-        versions: { node: '18.0.0' }
-      }
+      /* eslint-disable @typescript-eslint/ban-ts-comment */
+      // Provide a minimal stub for Node.js "process" for libs that expect it in the browser
+      // We intentionally cast to "any" to satisfy TypeScript without pulling in the full Node types.
+      // @ts-ignore
+      window.process ??= { env: {} } as any;
       // Polyfill Node global object for browser so libs like "which" work
       // @ts-ignore
       window.global ??= window
@@ -364,8 +363,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div className="message-text">
                 {message.sender === 'system' ? (
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
+                    remarkPlugins={[remarkGfm as any, remarkMath as any]}
+                    rehypePlugins={[rehypeKatex as any]}
                     components={{
                       table: ({ children, ...props }) => (
                         <table className="markdown-table" {...props}>

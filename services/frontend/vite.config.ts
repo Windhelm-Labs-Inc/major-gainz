@@ -7,10 +7,29 @@ import react from '@vitejs/plugin-react'
 const backendUrl = process.env.DOCKER_ENV === 'true' ? 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000'
 
 // https://vitejs.dev/config/
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
+
+const emptyModule = resolve(dirname(fileURLToPath(import.meta.url)), 'src/empty-module.js')
+
 export default defineConfig({
   plugins: [react()],
   
   // SECURE BUILD: Bundle everything, expose nothing
+  resolve: {
+    alias: {
+      'node:stream': 'stream-browserify',
+      stream: 'stream-browserify',
+      'node:path': 'path-browserify',
+      path: 'path-browserify',
+      'node:process': 'process/browser',
+      process: 'process/browser',
+      fs: emptyModule,
+      'node:fs': emptyModule,
+      child_process: emptyModule,
+    },
+  },
+
   build: {
     outDir: 'dist',
     sourcemap: false, // No source maps in production

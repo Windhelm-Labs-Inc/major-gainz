@@ -225,8 +225,8 @@ const EnhancedMessageRenderer: React.FC<Props> = ({
       {/* Main message content with enhanced markdown */}
       <div className="message-text-content">
         <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
+          remarkPlugins={[remarkGfm as any, remarkMath as any]}
+          rehypePlugins={[rehypeKatex as any]}
           components={customMarkdownComponents}
         >
           {message.text}

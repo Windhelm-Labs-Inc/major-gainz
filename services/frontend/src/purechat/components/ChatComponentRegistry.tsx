@@ -15,6 +15,7 @@ const COMPONENT_REGISTRY = {
   'defi-heatmap': EnhancedDefiHeatmap,
   'correlation-matrix': CorrelationMatrix,
   'token-analysis': TokenHolderAnalysis,
+  'volatility-surface': ReturnsVolatilityChart, // alias for now
   'legacy-portfolio-chart': PortfolioChart, // For comparison
 } as const;
 
@@ -74,6 +75,8 @@ export const ChatComponent: React.FC<ChatComponentProps> = ({
   onError 
 }) => {
   const Component = COMPONENT_REGISTRY[instruction.type];
+  // Cast to broadly typed component to satisfy TS when prop inference differs
+  const AnyComponent = Component as React.ComponentType<any>;
   
   if (!Component) {
     const error = `Unknown component type: ${instruction.type}`;
@@ -173,7 +176,7 @@ export const ChatComponent: React.FC<ChatComponentProps> = ({
         <Suspense 
           fallback={<ChatComponentSkeleton height={instruction.height || 400} />}
         >
-          <Component {...componentProps} />
+          <AnyComponent {...componentProps} />
         </Suspense>
       </div>
     );
@@ -229,7 +232,8 @@ export const getComponentDescriptions = (): Record<ComponentType, string> => {
     'defi-heatmap': 'Visual heatmap of DeFi opportunities with APY, TVL, and risk analysis',
     'correlation-matrix': 'Color-coded correlation matrix showing how token returns move together',
     'token-analysis': 'Detailed holder analysis for specific tokens including percentile rankings',
-    'legacy-portfolio-chart': 'Simple portfolio pie chart (legacy version for comparison)'
+    'legacy-portfolio-chart': 'Simple portfolio pie chart (legacy version for comparison)',
+    'volatility-surface': 'Scatter plot of volatility surface (alias to returns chart)'
   };
 };
 

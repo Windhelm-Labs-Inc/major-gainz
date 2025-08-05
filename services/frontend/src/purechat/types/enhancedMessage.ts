@@ -1,7 +1,7 @@
 import { PureChatPortfolio, PureChatDefiData, PureChatReturnsStats } from './pureChatTypes';
 
 export interface ComponentInstruction {
-  type: 'portfolio-chart' | 'defi-heatmap' | 'token-analysis' | 'returns-chart' | 'volatility-surface' | 'correlation-matrix';
+  type: 'portfolio-chart' | 'defi-heatmap' | 'token-analysis' | 'returns-chart' | 'volatility-surface' | 'correlation-matrix' | 'legacy-portfolio-chart';
   props: Record<string, any>;
   position: 'inline' | 'below' | 'above';
   id: string;
