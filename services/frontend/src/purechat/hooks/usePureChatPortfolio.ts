@@ -198,17 +198,38 @@ export default function usePureChatPortfolio(walletAddress?: string) {
           console.log('[usePureChatPortfolio] DeFi profile request failed:', defiProfileResp.status);
         }
 
-        // Fetch returns stats for each token
+        // Fetch returns stats for each token (only for standard tokens, not LP tokens)
         const symbols = [...new Set(portfolio.holdings.map(h => h.symbol))];
+        const validSymbols = symbols.filter(symbol => {
+          // Filter out LP tokens and other non-standard symbols
+          const isLPToken = symbol.includes('-LP') || 
+                           symbol.includes('ssLP-') || 
+                           symbol.includes('/') ||
+                           symbol.length > 10; // Most valid symbols are shorter
+          return !isLPToken;
+        });
+        
+        console.log('[usePureChatPortfolio] Filtered symbols for OHLCV:', { 
+          all: symbols, 
+          valid: validSymbols, 
+          filtered: symbols.filter(s => !validSymbols.includes(s))
+        });
+
         const returnsStats: PureChatReturnsStats[] = [];
 
-        for (const symbol of symbols) {
+        for (const symbol of validSymbols) {
           try {
             const [meanResp, stdResp, logReturnsResp] = await Promise.all([
               fetch(`${baseURL}/ohlcv/${symbol}/mean_return?days=30`),
               fetch(`${baseURL}/ohlcv/${symbol}/return_std?days=30`),
               fetch(`${baseURL}/ohlcv/${symbol}/log_returns?days=14`),
             ]);
+
+            console.log(`[usePureChatPortfolio] OHLCV responses for ${symbol}:`, {
+              mean: meanResp.status,
+              std: stdResp.status,
+              logReturns: logReturnsResp.status
+            });
 
             if (meanResp.ok && stdResp.ok && logReturnsResp.ok) {
               const [meanData, stdData, logReturnsData] = await Promise.all([

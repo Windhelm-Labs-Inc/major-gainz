@@ -47,8 +47,12 @@ const PureChatChatWindow: React.FC<Props> = ({
     scratchpadContext
   );
 
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const sendMessage = async () => {
-    if (!inputValue.trim() || !agentExecutor) return;
+    if (!inputValue.trim() || !agentExecutor || isProcessing) return;
+
+    setIsProcessing(true);
 
     // Handle scratchpad context changes
     const currentScratchpad = scratchpadContext || 'No active context';
@@ -71,6 +75,15 @@ const PureChatChatWindow: React.FC<Props> = ({
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
 
+    // Add processing indicator
+          const processingMsg: EnhancedMessage = {
+      id: userMsg.id + 0.5, // Use decimal to insert between messages
+      text: 'Working on your request…',
+      sender: 'system',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, processingMsg]);
+
     try {
       const res = await agentExecutor.invoke({ input: messageToSend });
       const reply = res?.output ?? JSON.stringify(res);
@@ -88,18 +101,27 @@ const PureChatChatWindow: React.FC<Props> = ({
         timestamp: new Date(),
         components: components.length > 0 ? components : undefined,
       };
-      setMessages(prev => [...prev, systemMsg]);
+      
+      // Remove processing indicator and add actual response
+      setMessages(prev => [
+        ...prev.filter(m => m.id !== processingMsg.id), // Remove processing message
+        systemMsg
+      ]);
     } catch (err) {
       console.error('[PureChat] Agent error', err);
+      
+      // Remove processing indicator and add error message
       setMessages(prev => [
-        ...prev,
+        ...prev.filter(m => m.id !== processingMsg.id), // Remove processing message
         {
           id: userMsg.id + 1,
-          text: 'Error processing request. See console.',
+          text: 'Error processing request. See console for details.',
           sender: 'system',
           timestamp: new Date(),
         } as EnhancedMessage,
       ]);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -151,19 +173,7 @@ const PureChatChatWindow: React.FC<Props> = ({
             network: hederaNetwork
           };
 
-          // Debug chart context
-          if (m.id === messages.length) { // Only log for the latest message
-            console.log('[PureChat] Chart context for latest message:', {
-              hasPortfolio: !!portfolio,
-              portfolioTokens: portfolio?.holdings?.length || 0,
-              hasDefiData: !!defiData,
-              defiPositions: defiData?.positionCount || 0,
-              hasReturnsData: !!returnsStats?.length,
-              returnsTokens: returnsStats?.length || 0,
-              hasComponents: !!m.components?.length,
-              componentCount: m.components?.length || 0
-            });
-          }
+
 
           return (
             <div key={m.id} className={`message ${m.sender}`}>
@@ -190,8 +200,8 @@ const PureChatChatWindow: React.FC<Props> = ({
           onKeyPress={handleKeyPress}
           placeholder="Type your message here..."
         />
-        <button disabled={!inputValue.trim()} onClick={sendMessage}>
-          Send
+        <button disabled={!inputValue.trim() || isProcessing} onClick={sendMessage}>
+          {isProcessing ? 'Processing...' : 'Send'}
         </button>
       </div>
 

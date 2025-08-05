@@ -257,25 +257,7 @@ const EnhancedMessageRenderer: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Debug info for messages that mention charts but don't have components */}
-      {message.sender === 'system' && 
-       (message.text.toLowerCase().includes('chart') || 
-        message.text.toLowerCase().includes('above') || 
-        message.text.toLowerCase().includes('displayed')) && 
-       !message.components?.length && (
-        <div className="debug-info" style={{ 
-          padding: '8px', 
-          background: '#fff3cd', 
-          border: '1px solid #fbbf24', 
-          borderRadius: '4px', 
-          fontSize: '12px',
-          color: '#92400e',
-          marginTop: '8px'
-        }}>
-          ⚠️ Debug: Message mentions charts but no components were parsed. 
-          Check console for details.
-        </div>
-      )}
+
     </div>
   );
 };

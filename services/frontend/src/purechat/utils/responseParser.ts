@@ -17,7 +17,7 @@ export const parseAgentResponse = (responseText: string): ParsedResponse => {
   let cleanText = responseText;
 
   // Pattern 1: Full JSON format [CHART_COMPONENT:{...}]
-  const jsonPattern = /\[CHART_COMPONENT:(\{[^}]+\})\]/g;
+  const jsonPattern = /\[CHART_COMPONENT:(\{[\s\S]*?\})\]/g;
   let match;
   
   while ((match = jsonPattern.exec(responseText)) !== null) {

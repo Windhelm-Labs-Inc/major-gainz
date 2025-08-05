@@ -192,10 +192,12 @@ export default function usePureChatAgent(
         );
 
         const prompt = ChatPromptTemplate.fromMessages([
+          ,
+          ['placeholder', '{chat_history}'],
+          ['placeholder', '{agent_scratchpad}'],
+          ['human', '{input}'],
           [
-            'system',
-            `${personality}\n\n` +
-            `Current snapshot memory:\n${scratchpadContext || 'No active context'}\n\n` +
+            'system',`${personality}\n\n`+`Current snapshot memory:\n${scratchpadContext || 'No active context'}\n\n` +
             `Current portfolio (USD terms):\nTOKEN\tAMOUNT\tUSD\t%\n${portfolioTable || 'N/A'}\n` +
             `Summary: ${portfolioSummary}\n\n` +
             `DeFi Holdings:\n${defiSummary}\n\n` +
@@ -213,19 +215,21 @@ export default function usePureChatAgent(
             `- Use token-analysis for detailed holder information\n\n` +
             `Example: If user asks "show my portfolio", respond with text analysis AND call render_chart with portfolio-chart.\n` +
             `Charts will appear embedded in your response. Use the suggest_chart tool first if you're unsure which chart is most appropriate.\n\n` +
-            `IMPORTANT: You MUST call the render_chart tool to actually display charts. Simply mentioning charts in text will not render them.\n` +
-            `Always call render_chart when the user requests any visualization or when you think a chart would be helpful.`,
+            `IMPORTANT: You MUST call the render_chart tool to actually display charts.\n` +
+            `After you call render_chart, you MUST include the EXACT string returned by the tool (the \"[CHART_COMPONENT:...]\" marker) somewhere in the SAME assistant message so the frontend can render the chart.\n` +
+            `Do NOT paraphrase the marker or wrap it in markdown code fences—just include it inline. If you provide analysis text, place the marker on its own line before or after the explanation.\n` +
+            `Simply mentioning charts without including the marker will NOT render anything.`, 
           ],
-          ['placeholder', '{chat_history}'],
-          ['human', '{input}'],
-          ['placeholder', '{agent_scratchpad}'],
         ]);
 
         const baseURL = `${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/v1`;
         const llm = new ChatOpenAI({
-          modelName: 'gpt-4o',
-          temperature: 0.7,
-          configuration: { baseURL },
+          modelName: 'o3-mini',
+          temperature: 1,
+          configuration: { 
+            baseURL,
+            timeout: 180000, // 3 minutes to account for retry delays
+          },
           openAIApiKey: FAKE_OPENAI_KEY,
         });
 

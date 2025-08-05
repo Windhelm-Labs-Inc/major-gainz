@@ -88,14 +88,7 @@ const PromptSuggestions: React.FC<Props> = ({
   const [hoveredPrompt, setHoveredPrompt] = useState<string | null>(null);
 
   const isDataAvailable = (requiresData: string): boolean => {
-    console.log('[PromptSuggestions] Checking data availability for:', requiresData, {
-      portfolio: !!portfolio?.holdings?.length,
-      portfolioCount: portfolio?.holdings?.length || 0,
-      defi: !!defiData?.positionCount,
-      defiPositions: defiData?.positionCount || 0,
-      returns: !!returnsStats?.length,
-      returnsCount: returnsStats?.length || 0
-    });
+
     
     switch (requiresData) {
       case 'portfolio':
