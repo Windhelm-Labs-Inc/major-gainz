@@ -191,6 +191,24 @@ export default function usePureChatAgent(
           })
         );
 
+        // Load external MCP tools (Hedera RAG server)
+        try {
+          const { MultiServerMCPClient } = await import('@langchain/mcp-adapters');
+          const ragUrl = import.meta.env.VITE_RAG_MCP_URL || `${window.location.origin}/mcp`;
+          const mcpClient = new MultiServerMCPClient({
+            hedera_rag: {
+              url: ragUrl,
+              transport: 'http',
+            },
+          });
+          const mcpTools = await mcpClient.getTools();
+          const toolNames = mcpTools.map((t: any) => t.name || 'unknown');
+          console.info('[usePureChatAgent] Connected to Hedera RAG MCP – tools loaded:', toolNames);
+          tools.push(...mcpTools);
+        } catch (err) {
+          console.warn('[usePureChatAgent] Failed to load MCP tools', err);
+        }
+
         const prompt = ChatPromptTemplate.fromMessages([
           ,
           ['placeholder', '{chat_history}'],

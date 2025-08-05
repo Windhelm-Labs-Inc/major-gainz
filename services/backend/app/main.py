@@ -17,11 +17,17 @@ print("=" * 50)
 from .database import Base, engine
 from .crud_saucerswap import refresh_all_tokens
 # Import routers including new portfolio, defi, and chat
-from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi, chat
+from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi, chat, mcp_proxy
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Hedera Token OHLCV API")
+
+# Serve the pre-built frontend bundle (index.html & assets)
+from fastapi.staticfiles import StaticFiles
+FRONTEND_DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'dist'))
+if os.path.isdir(FRONTEND_DIST_DIR):
+    app.mount('/', StaticFiles(directory=FRONTEND_DIST_DIR, html=True), name='frontend')
 
 # Add CORS middleware
 app.add_middleware(
@@ -45,6 +51,7 @@ app.include_router(portfolio.router)
 app.include_router(token_holdings.router)
 app.include_router(defi.router)
 app.include_router(chat.router)
+app.include_router(mcp_proxy.router)
 
 
 @app.on_event("startup")

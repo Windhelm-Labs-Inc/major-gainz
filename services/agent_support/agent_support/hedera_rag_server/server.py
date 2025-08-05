@@ -1,5 +1,4 @@
 """Entry point that exposes an MCP server via Streamable HTTP transport.
-
 The server offers two simple tools:
 
 1. ``hello`` – classic "Hello World" style echo
@@ -19,6 +18,8 @@ from starlette.requests import Request
 from hedera_rag_server.logging_config import _root  # noqa: F401  # side-effect import
 
 import logging
+import os
+import socket
 logger = logging.getLogger(__name__)
 
 # Importing rag_index triggers loading/building the vector index at startup
@@ -129,13 +130,17 @@ if __name__ == "__main__":
     
     mcp_server_ready = asyncio.Event()
     
+    # ------------------------------------------------------------------
+    # MCP port configuration – keep fixed so the backend proxy matches
+    # ------------------------------------------------------------------
+    MCP_PORT = int(os.getenv("MCP_PORT", "9091"))
+
     def start_mcp_background():
-        """Start MCP server in background"""
-        # Give main thread time to set up
-        time.sleep(0.5)
+        """Start MCP server in background on a known port."""
+        time.sleep(0.5)  # give FastAPI time to boot
         try:
-            logger.info("Starting background MCP server on port 9091...")
-            mcp.run(transport="http", host="127.0.0.1", port=9091)
+            logger.info("Starting background MCP server on port %s...", MCP_PORT)
+            mcp.run(transport="http", host="127.0.0.1", port=MCP_PORT)
         except Exception as e:
             logger.error("Failed to start MCP server: %s", e)
     
@@ -219,7 +224,9 @@ if __name__ == "__main__":
             else:
                 target_path = "/mcp/" + path if path else "/mcp/"
             
-            url = f"http://127.0.0.1:9091{target_path}"
+            _proxy_host = os.getenv("MCP_HOST", "127.0.0.1")
+            _proxy_port = int(os.getenv("MCP_PORT", "9091"))
+            url = f"http://{_proxy_host}:{_proxy_port}{target_path}"
             
             # Get request body
             body = None

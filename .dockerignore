@@ -45,6 +45,5 @@ services/frontend/appSettings.json
 .Trashes
 ehthumbs.db
 Thumbs.db
-
 # Poetry lock files
 poetry.lock 

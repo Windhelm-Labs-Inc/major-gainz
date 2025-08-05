@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 // Determine backend URL based on environment
 // In Docker: backend is internal on localhost
 // In local dev: backend is on 0.0.0.0 (for cross-platform compatibility)
-const backendUrl = process.env.DOCKER_ENV === 'true' ? 'http://127.0.0.1:8000' : 'http://0.0.0.0:8000'
+const backendUrl = process.env.DOCKER_ENV === 'true' ? 'http://127.0.0.1:8000' : 'http://127.0.0.1:8000'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -43,7 +43,8 @@ export default defineConfig({
       '/refresh': backendUrl,
       '/token_holdings': backendUrl,
       '/defi': backendUrl,
-      '/chat': backendUrl
+      '/chat': backendUrl,
+      '/mcp': backendUrl
     }
   },
   
@@ -60,7 +61,8 @@ export default defineConfig({
       '/refresh': 'http://127.0.0.1:8000',
       '/token_holdings': 'http://127.0.0.1:8000',
       '/defi': 'http://127.0.0.1:8000',
-      '/chat': 'http://127.0.0.1:8000'
+      '/chat': 'http://127.0.0.1:8000',
+      '/mcp': 'http://127.0.0.1:8000'
     }
   },
   

@@ -265,7 +265,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     try {
       const { MultiServerMCPClient } = await import('@langchain/mcp-adapters')
       const ragUrl =
-        import.meta.env.VITE_RAG_MCP_URL || 'http://127.0.0.1:9090/mcp/'
+        import.meta.env.VITE_RAG_MCP_URL || `${window.location.origin}/mcp`
       const mcpClient = new MultiServerMCPClient({
         hedera_rag: {
           url: ragUrl,

@@ -1,92 +1,85 @@
-# Use an official Python base image that also supports Node.js
-FROM nikolaik/python-nodejs:python3.11-nodejs20-slim
+###############################################################################
+# Multi-stage, single-port Dockerfile
+#   • Exposes ONLY 8080 externally.
+#   • Internally runs:
+#       – FastAPI backend (also serves static frontend & /mcp proxy) on 8080
+#       – RAG MCP server on 9090 (not exposed)
+#   • Uses Node build stage + Python deps stage to keep runtime layer slim.
+###############################################################################
 
-# Install system dependencies including Node.js
-RUN apt-get update && apt-get install -y \
-    curl \
-    build-essential \
-    make \
-    git \ 
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+########## 1️⃣  Build React frontend ###########################################
+FROM node:20-alpine AS frontend-builder
+WORKDIR /frontend
 
+# Pass the location of the MCP proxy so Vite embeds the correct URL
+ENV VITE_RAG_MCP_URL=/mcp/
 
-RUN pip install poetry
+COPY services/frontend/package*.json ./
+RUN npm ci --only=production
+COPY services/frontend/ ./
+RUN npm run build # → /frontend/dist
 
+########## 2️⃣  Install Python dependencies ###################################
+FROM python:3.11-slim AS python-deps
+ENV POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade pip poetry
+
+WORKDIR /build
+COPY services/backend/pyproject.toml services/backend/poetry.lock* ./backend/
+COPY services/agent_support/pyproject.toml services/agent_support/poetry.lock* ./agent_support/
+COPY services/backend/static/token_holdings/pyproject.toml ./token_holdings/
+RUN poetry install --no-root --only=main
+
+########## 3️⃣  Runtime image ###################################################
+FROM python:3.11-slim AS runtime
+LABEL org.opencontainers.image.description="Quick-Origins all-in-one (single-port)"
 
 WORKDIR /app
 
+# --- Python env from builder -------------------------------------------------
+COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=python-deps /usr/local/bin /usr/local/bin
 
-COPY . .
+# --- Application code --------------------------------------------------------
+COPY services/backend/app ./services/backend/app
+COPY services/agent_support/agent_support ./services/agent_support/agent_support
+COPY services/backend/static/token_holdings/src ./services/backend/static/token_holdings/src
 
-# Configure Poetry to not create virtual environments in container
-#RUN poetry config virtualenvs.create false
+# --- Frontend bundle ---------------------------------------------------------
+COPY --from=frontend-builder /frontend/dist ./services/frontend/dist
 
-# Install Python dependencies for backend
-WORKDIR /app/services/backend
-# Install Python deps without relying on existing poetry.lock (may be excluded by .dockerignore)
-RUN rm -f poetry.lock \
-    && poetry lock --no-interaction \
-    && poetry install --no-interaction --no-root 
+# --- SQLite databases --------------------------------------------------------
+COPY services/backend/ohlcv.db ./services/backend/ohlcv.db
+COPY services/backend/static/token_holdings/token_holdings.db ./services/backend/static/token_holdings/token_holdings.db
 
-# Install Python dependencies for RAG service
-WORKDIR /app/services/agent_support
-RUN poetry install --no-interaction --no-root
+RUN mkdir -p ./services/backend/logs
 
-WORKDIR /app
+ENV PORT=8080 \
+    WEBSITES_PORT=8080
 
-# Install Node.js dependencies for frontend
-WORKDIR /app/services/frontend
-RUN npm install
+EXPOSE 8080
 
-# Create logs directory for backend
-RUN mkdir -p /app/services/backend/logs
+# -------- Launch script ------------------------------------------------------
+COPY <<'EOF' /start.sh
+#!/bin/sh
+set -e
 
-# Return to project root
-WORKDIR /app
+# 1. FastAPI backend (serves API, static files, and /mcp proxy)
+cd /app/services/backend
+uvicorn app.main:app --host 0.0.0.0 --port 8080 &
+BACKEND_PID=$!
 
-# Set the port for the frontend server
-ENV PORT=8080
-ENV WEBSITES_PORT=8080
+# 2. RAG server (internal only)  
+cd /app/services/agent_support
+MCP_PORT=${MCP_PORT:-9090} python -m agent_support.hedera_rag_server.server &
+RAG_PID=$!
 
-# Build frontend for production
-WORKDIR /app/services/frontend
-RUN npm run build
+trap "kill $BACKEND_PID $RAG_PID" TERM INT
+wait $BACKEND_PID $RAG_PID
+EOF
+RUN chmod +x /start.sh
 
-# Expose only the frontend port (public access)
-EXPOSE $PORT 9090
-
-# Create startup script
-RUN echo '#!/bin/sh\n\
-set -e\n\
-echo "Starting backend server..."\n\
-cd /app/services/backend\n\
-poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000 &\n\
-BACKEND_PID=$!\n\
-echo "Backend started with PID: $BACKEND_PID"\n\
-\n\
-echo "Starting RAG server..."\ncd /app/services/agent_support\npoetry run python -m agent_support.hedera_rag_server.server --host 0.0.0.0 --port 9090 &\nRAG_PID=$!\necho "RAG server started with PID: $RAG_PID"\n\necho "Starting frontend server..."\n\
-cd /app/services/frontend\n\
-npm run preview -- --host 0.0.0.0 --port $PORT &\n\
-FRONTEND_PID=$!\n\
-echo "Frontend started with PID: $FRONTEND_PID"\n\
-\n\
-# Function to handle shutdown\n\
-cleanup() {\n\
-    echo "Shutting down services..."\n\
-    kill $BACKEND_PID $FRONTEND_PID $RAG_PID 2>/dev/null || true\n\
-    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null || true\n\
-    echo "Services stopped."\n\
-}\n\
-\n\
-# Set trap for cleanup on exit\n\
-trap cleanup TERM INT\n\
-\n\
-# Wait for both processes\n\
-wait $FRONTEND_PID $BACKEND_PID $RAG_PID\n\
-' > /start.sh && chmod +x /start.sh
-
-# Start both backend and frontend servers
 CMD ["/start.sh"]
