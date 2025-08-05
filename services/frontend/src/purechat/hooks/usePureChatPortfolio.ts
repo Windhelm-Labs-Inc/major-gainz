@@ -29,13 +29,17 @@ export default function usePureChatPortfolio(walletAddress?: string) {
       
       try {
         const baseURL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
+        console.log('[usePureChatPortfolio] Fetching data for:', walletAddress);
+        console.log('[usePureChatPortfolio] Base URL:', baseURL);
         
-        // Fetch portfolio, DeFi platforms, and DeFi positions in parallel
-        const [portfolioResp, defiPlatformsResp, defiPositionsResp] = await Promise.all([
+        // Fetch portfolio and DeFi profile in parallel
+        const [portfolioResp, defiProfileResp] = await Promise.all([
           fetch(`${baseURL}/portfolio/${walletAddress}`),
-          fetch(`${baseURL}/defi/platforms/${walletAddress}`),
-          fetch(`${baseURL}/defi/positions/${walletAddress}`),
+          fetch(`${baseURL}/defi/profile/${walletAddress}?include_risk_analysis=false`),
         ]);
+
+        console.log('[usePureChatPortfolio] Portfolio response status:', portfolioResp.status);
+        console.log('[usePureChatPortfolio] DeFi response status:', defiProfileResp.status);
 
         if (!portfolioResp.ok) throw new Error(`Portfolio fetch failed: ${portfolioResp.status}`);
         
@@ -56,25 +60,142 @@ export default function usePureChatPortfolio(walletAddress?: string) {
 
         // Process DeFi data if available
         let defiData: PureChatDefiData | undefined;
-        if (defiPlatformsResp.ok && defiPositionsResp.ok) {
+        if (defiProfileResp.ok) {
           try {
-            const [platformsData, positionsData] = await Promise.all([
-              defiPlatformsResp.json(),
-              defiPositionsResp.json(),
-            ]);
+            const defiProfileData = await defiProfileResp.json();
+            console.log('[usePureChatPortfolio] DeFi profile data:', defiProfileData);
 
-            const totalValueLocked = positionsData.reduce((sum: number, pos: any) => 
-              sum + (pos.usd_value || 0), 0
-            );
+            // Extract positions from different protocols
+            const positions: any[] = [];
+            let totalValueLocked = 0;
+
+            // Process Bonzo Finance data
+            if (defiProfileData.bonzo_finance) {
+              const bonzo = defiProfileData.bonzo_finance;
+              
+              // Process supplied assets
+              if (bonzo.supplied && Array.isArray(bonzo.supplied)) {
+                bonzo.supplied.forEach((asset: any) => {
+                  if (asset.amount > 0) {
+                    positions.push({
+                      platform: 'Bonzo Finance',
+                      protocol: 'bonzo',
+                      type: 'supply',
+                      amount: asset.amount,
+                      usd_value: asset.usd_value || 0,
+                      token_symbol: asset.token_symbol,
+                      apy: asset.supply_apy || 0,
+                      risk_level: 'medium'
+                    });
+                    totalValueLocked += asset.usd_value || 0;
+                  }
+                });
+              }
+
+              // Process borrowed assets
+              if (bonzo.borrowed && Array.isArray(bonzo.borrowed)) {
+                bonzo.borrowed.forEach((asset: any) => {
+                  if (asset.amount > 0) {
+                    positions.push({
+                      platform: 'Bonzo Finance',
+                      protocol: 'bonzo',
+                      type: 'borrow',
+                      amount: asset.amount,
+                      usd_value: asset.usd_value || 0,
+                      token_symbol: asset.token_symbol,
+                      apy: asset.borrow_apy || 0,
+                      risk_level: 'high'
+                    });
+                  }
+                });
+              }
+            }
+
+            // Process SaucerSwap data
+            if (defiProfileData.saucer_swap) {
+              const saucer = defiProfileData.saucer_swap;
+
+              // Process V1 pools
+              if (saucer.pools_v1 && Array.isArray(saucer.pools_v1)) {
+                saucer.pools_v1.forEach((pool: any) => {
+                  if (pool.user_liquidity_usd > 0) {
+                    positions.push({
+                      platform: 'SaucerSwap V1',
+                      protocol: 'saucerswap',
+                      type: 'liquidity',
+                      amount: pool.user_liquidity_usd,
+                      usd_value: pool.user_liquidity_usd,
+                      token_symbol: pool.token_a_symbol + '/' + pool.token_b_symbol,
+                      apy: pool.apy || 0,
+                      risk_level: 'low'
+                    });
+                    totalValueLocked += pool.user_liquidity_usd;
+                  }
+                });
+              }
+
+              // Process V2 pools
+              if (saucer.pools_v2 && Array.isArray(saucer.pools_v2)) {
+                saucer.pools_v2.forEach((pool: any) => {
+                  if (pool.user_liquidity_usd > 0) {
+                    positions.push({
+                      platform: 'SaucerSwap V2',
+                      protocol: 'saucerswap',
+                      type: 'liquidity',
+                      amount: pool.user_liquidity_usd,
+                      usd_value: pool.user_liquidity_usd,
+                      token_symbol: pool.token_a_symbol + '/' + pool.token_b_symbol,
+                      apy: pool.apy || 0,
+                      risk_level: 'low'
+                    });
+                    totalValueLocked += pool.user_liquidity_usd;
+                  }
+                });
+              }
+
+              // Process farms
+              if (saucer.farms && Array.isArray(saucer.farms)) {
+                saucer.farms.forEach((farm: any) => {
+                  if (farm.user_staked_usd > 0) {
+                    positions.push({
+                      platform: 'SaucerSwap Farm',
+                      protocol: 'saucerswap',
+                      type: 'farm',
+                      amount: farm.user_staked_usd,
+                      usd_value: farm.user_staked_usd,
+                      token_symbol: farm.token_symbol || 'LP',
+                      apy: farm.apy || 0,
+                      risk_level: 'medium'
+                    });
+                    totalValueLocked += farm.user_staked_usd;
+                  }
+                });
+              }
+            }
+
+            // Create consolidated platforms data structure
+            const platformsData: Record<string, any> = {};
+            
+            // Group positions by platform
+            positions.forEach(pos => {
+              if (!platformsData[pos.protocol]) {
+                platformsData[pos.protocol] = [];
+              }
+              platformsData[pos.protocol].push(pos);
+            });
 
             defiData = {
               platforms: platformsData,
               totalValueLocked,
-              positionCount: positionsData.length,
+              positionCount: positions.length,
             };
+
+            console.log('[usePureChatPortfolio] Processed DeFi data:', defiData);
           } catch (defiErr) {
             console.warn('[usePureChatPortfolio] DeFi data processing failed:', defiErr);
           }
+        } else {
+          console.log('[usePureChatPortfolio] DeFi profile request failed:', defiProfileResp.status);
         }
 
         // Fetch returns stats for each token

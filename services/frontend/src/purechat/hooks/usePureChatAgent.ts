@@ -104,6 +104,93 @@ export default function usePureChatAgent(
           );
         }
 
+        // Add chart rendering tools
+        tools.push(
+          new DynamicTool({
+            name: 'render_chart',
+            description: `Render interactive charts in the chat response. Available chart types:
+              - portfolio-chart: Interactive pie/doughnut chart showing portfolio allocation with selection and detailed stats
+              - returns-chart: Scatter plot and time series analysis of token returns vs volatility with risk metrics  
+              - defi-heatmap: Visual heatmap of DeFi opportunities with APY, TVL, and risk analysis
+              - correlation-matrix: Color-coded correlation matrix showing how token returns move together
+              - token-analysis: Detailed holder analysis for specific tokens including percentile rankings
+              
+              Usage: render_chart({"type": "portfolio-chart", "position": "below", "title": "My Portfolio", "props": {"chartType": "doughnut"}})
+              
+              Position options: "above", "below", "inline"
+              Props are chart-specific customization options.`,
+            func: async (input: string) => {
+              try {
+                const instruction = JSON.parse(input);
+                console.log('[usePureChatAgent] render_chart called with:', instruction);
+                // Return a special marker that the frontend will parse
+                const marker = `[CHART_COMPONENT:${JSON.stringify(instruction)}]`;
+                console.log('[usePureChatAgent] returning marker:', marker);
+                return marker;
+              } catch (err) {
+                console.error('[usePureChatAgent] render_chart error:', err);
+                return 'Error: Invalid chart instruction format. Use JSON format with type, position, and optional props.';
+              }
+            }
+          })
+        );
+
+        tools.push(
+          new DynamicTool({
+            name: 'suggest_chart',
+            description: `Suggest appropriate charts based on user query and available data. 
+              This analyzes the current data context and recommends relevant visualizations.
+              Returns suggestions that can be used with render_chart tool.`,
+            func: async (query: string) => {
+              const suggestions = [];
+              
+              if (portfolio?.holdings.length) {
+                suggestions.push({
+                  type: 'portfolio-chart',
+                  reason: 'Portfolio data available',
+                  description: 'Show portfolio allocation and token distribution'
+                });
+              }
+              
+              if (returnsStats?.length) {
+                suggestions.push({
+                  type: 'returns-chart',
+                  reason: 'Returns statistics available',
+                  description: 'Analyze risk vs return profile of tokens'
+                });
+                
+                if (returnsStats.length >= 2) {
+                  suggestions.push({
+                    type: 'correlation-matrix',
+                    reason: 'Multiple tokens with returns data',
+                    description: 'Show how token returns correlate with each other'
+                  });
+                }
+              }
+              
+              if (defiData?.positionCount) {
+                suggestions.push({
+                  type: 'defi-heatmap',
+                  reason: 'DeFi positions available',
+                  description: 'Visualize DeFi opportunities and current positions'
+                });
+              }
+              
+              return JSON.stringify({
+                query,
+                suggestions,
+                context: {
+                  hasPortfolio: !!portfolio?.holdings.length,
+                  hasReturnsData: !!returnsStats?.length,
+                  hasDefiData: !!defiData?.positionCount,
+                  tokenCount: portfolio?.holdings.length || 0,
+                  defiPositions: defiData?.positionCount || 0
+                }
+              });
+            }
+          })
+        );
+
         const prompt = ChatPromptTemplate.fromMessages([
           [
             'system',
@@ -115,7 +202,19 @@ export default function usePureChatAgent(
             `Returns Statistics (30-day averages):\n${returnsStatsSummary}\n\n` +
             `IMPORTANT: Daily returns data provided via get_returns_stats tool contains LOG RETURNS (natural logarithm), not simple returns. ` +
             `Each token has 14 days of daily log returns available for detailed analysis.\n\n` +
-            `Use this portfolio, DeFi, and returns data to provide informed financial analysis and recommendations.`,
+            `Use this portfolio, DeFi, and returns data to provide informed financial analysis and recommendations.\n\n` +
+            `CHART RENDERING CAPABILITIES:\n` +
+            `You can render interactive charts directly in your responses using the render_chart tool. ` +
+            `When providing analysis, consider including relevant visualizations to enhance understanding:\n` +
+            `- Use portfolio-chart when discussing portfolio allocation or token distribution\n` +
+            `- Use returns-chart when analyzing risk/return profiles or volatility\n` +
+            `- Use defi-heatmap when discussing DeFi opportunities or protocol analysis\n` +
+            `- Use correlation-matrix when analyzing how tokens move together\n` +
+            `- Use token-analysis for detailed holder information\n\n` +
+            `Example: If user asks "show my portfolio", respond with text analysis AND call render_chart with portfolio-chart.\n` +
+            `Charts will appear embedded in your response. Use the suggest_chart tool first if you're unsure which chart is most appropriate.\n\n` +
+            `IMPORTANT: You MUST call the render_chart tool to actually display charts. Simply mentioning charts in text will not render them.\n` +
+            `Always call render_chart when the user requests any visualization or when you think a chart would be helpful.`,
           ],
           ['placeholder', '{chat_history}'],
           ['human', '{input}'],

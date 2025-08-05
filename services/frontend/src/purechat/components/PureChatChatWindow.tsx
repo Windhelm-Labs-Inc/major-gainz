@@ -1,18 +1,13 @@
 import React, { useState, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
 import usePureChatAgent, { HederaNetwork } from '../hooks/usePureChatAgent';
 import usePureChatPortfolio from '../hooks/usePureChatPortfolio';
+import EnhancedMessageRenderer from './EnhancedMessageRenderer';
+import PromptSuggestions from './PromptSuggestions';
+import { EnhancedMessage, ChartContext } from '../types/enhancedMessage';
+import { parseAgentResponse } from '../utils/responseParser';
+import '../styles/enhancedCharts.css';
 
-interface Message {
-  id: number;
-  text: string;
-  sender: 'user' | 'system';
-  timestamp: Date;
-}
+// Using EnhancedMessage from types instead of local interface
 
 interface Props {
   personality: string;
@@ -27,15 +22,16 @@ const PureChatChatWindow: React.FC<Props> = ({
   walletAddress,
   scratchpadContext 
 }) => {
-  const [messages, setMessages] = useState<Message[]>([
+  const [messages, setMessages] = useState<EnhancedMessage[]>([
     {
       id: 1,
-      text: 'Welcome to PureChat! Connect a wallet in Settings to enable portfolio-aware responses.',
+      text: 'Welcome to PureChat! Connect a wallet in Settings to enable portfolio-aware responses with interactive charts.',
       sender: 'system',
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState('');
+  const [suggestionsCollapsed, setSuggestionsCollapsed] = useState(true);
   const lastSentScratchpad = useRef<string>('');
 
   // Fetch portfolio and DeFi data
@@ -66,7 +62,7 @@ const PureChatChatWindow: React.FC<Props> = ({
       lastSentScratchpad.current = currentScratchpad;
     }
 
-    const userMsg: Message = {
+    const userMsg: EnhancedMessage = {
       id: messages.length + 1,
       text: inputValue.trim(),
       sender: 'user',
@@ -78,11 +74,19 @@ const PureChatChatWindow: React.FC<Props> = ({
     try {
       const res = await agentExecutor.invoke({ input: messageToSend });
       const reply = res?.output ?? JSON.stringify(res);
-      const systemMsg: Message = {
+      
+      // Parse the response to extract chart instructions
+      console.log('[PureChat] Raw agent response:', reply);
+      const { text, components } = parseAgentResponse(reply);
+      console.log('[PureChat] Parsed components:', components);
+      console.log('[PureChat] Clean text:', text);
+      
+      const systemMsg: EnhancedMessage = {
         id: userMsg.id + 1,
-        text: reply,
+        text,
         sender: 'system',
         timestamp: new Date(),
+        components: components.length > 0 ? components : undefined,
       };
       setMessages(prev => [...prev, systemMsg]);
     } catch (err) {
@@ -94,7 +98,7 @@ const PureChatChatWindow: React.FC<Props> = ({
           text: 'Error processing request. See console.',
           sender: 'system',
           timestamp: new Date(),
-        },
+        } as EnhancedMessage,
       ]);
     }
   };
@@ -104,6 +108,11 @@ const PureChatChatWindow: React.FC<Props> = ({
       e.preventDefault();
       sendMessage();
     }
+  };
+
+  const handlePromptSelect = (prompt: string) => {
+    setInputValue(prompt);
+    // Don't auto-send, just populate the input as requested
   };
 
   const time = (d: Date) => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -122,8 +131,9 @@ const PureChatChatWindow: React.FC<Props> = ({
           {error && `⚠️ Data unavailable: ${error}`}
           {portfolio && (
             <>
-              ✅ Portfolio: $${portfolio.totalValue.toFixed(2)} across ${portfolio.holdings.length} tokens
+              ✅ Portfolio: ${portfolio.totalValue.toFixed(2)} across {portfolio.holdings.length} tokens
               {defiData && ` | DeFi: $${defiData.totalValueLocked.toFixed(2)} TVL in ${defiData.positionCount} positions`}
+              {!defiData && ' | DeFi: No positions found'}
             </>
           )}
           {walletAddress && <span style={{ float: 'right' }}>🔗 {walletAddress}</span>}
@@ -131,20 +141,45 @@ const PureChatChatWindow: React.FC<Props> = ({
       )}
 
       <div className="chat-messages">
-        {messages.map(m => (
-          <div key={m.id} className={`message ${m.sender}`}>
-            <div className="message-content">
-              {m.sender === 'system' ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {m.text}
-                </ReactMarkdown>
-              ) : (
-                <span>{m.text}</span>
-              )}
-              <span className="message-time">{time(m.timestamp)}</span>
+        {messages.map(m => {
+          // Create chart context for components
+          const chartContext: ChartContext = {
+            portfolio,
+            defiData,
+            returnsStats,
+            userAddress: walletAddress,
+            network: hederaNetwork
+          };
+
+          // Debug chart context
+          if (m.id === messages.length) { // Only log for the latest message
+            console.log('[PureChat] Chart context for latest message:', {
+              hasPortfolio: !!portfolio,
+              portfolioTokens: portfolio?.holdings?.length || 0,
+              hasDefiData: !!defiData,
+              defiPositions: defiData?.positionCount || 0,
+              hasReturnsData: !!returnsStats?.length,
+              returnsTokens: returnsStats?.length || 0,
+              hasComponents: !!m.components?.length,
+              componentCount: m.components?.length || 0
+            });
+          }
+
+          return (
+            <div key={m.id} className={`message ${m.sender}`}>
+              <div className="message-content">
+                <EnhancedMessageRenderer 
+                  message={m}
+                  context={chartContext}
+                  onComponentError={(error) => {
+                    console.error('[PureChat] Component error:', error);
+                  }}
+                />
+                <span className="message-time">{time(m.timestamp)}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="chat-input-area">
@@ -159,6 +194,16 @@ const PureChatChatWindow: React.FC<Props> = ({
           Send
         </button>
       </div>
+
+      {/* Prompt Suggestions Panel */}
+      <PromptSuggestions
+        onPromptSelect={handlePromptSelect}
+        portfolio={portfolio}
+        defiData={defiData}
+        returnsStats={returnsStats}
+        isCollapsed={suggestionsCollapsed}
+        onToggleCollapse={() => setSuggestionsCollapsed(!suggestionsCollapsed)}
+      />
     </div>
   );
 };
