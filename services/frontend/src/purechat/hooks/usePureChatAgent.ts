@@ -1,3 +1,13 @@
+// Set up browser environment early
+if (typeof window !== 'undefined') {
+  // @ts-ignore
+  window.global ??= window;
+  // @ts-ignore
+  window.process ??= { env: {}, platform: 'browser', version: '18.0.0', versions: { node: '18.0.0' } };
+  // @ts-ignore
+  window.process.env.OPENAI_API_KEY = 'NOTAREALKEYSECRETSCRETSTOPLOOKINGATALLMYSECRETSAHHHHHHH!';
+}
+
 import { useEffect, useState } from 'react';
 import { PureChatPortfolio, PureChatReturnsStats, PureChatDefiData } from '../types/pureChatTypes';
 
@@ -32,10 +42,6 @@ export default function usePureChatAgent(
         if (typeof window !== 'undefined') {
           // @ts-ignore
           window.global ??= window;
-          // @ts-ignore
-          window.process ??= { env: {}, platform: 'browser', version: '18.0.0', versions: { node: '18.0.0' } };
-          // @ts-ignore
-          window.process.env.OPENAI_API_KEY = FAKE_OPENAI_KEY;
         }
 
         const client =
@@ -194,7 +200,11 @@ export default function usePureChatAgent(
         // Load external MCP tools (Hedera RAG server)
         try {
           const { MultiServerMCPClient } = await import('@langchain/mcp-adapters');
+          // Force relative paths in production (avoid localhost URLs in Azure)
           let ragUrl = import.meta.env.VITE_RAG_BASE || '/mcp';
+          if (ragUrl.includes('127.0.0.1') || ragUrl.includes('localhost')) {
+            ragUrl = '/mcp';
+          }
           if (!/^https?:\/\//.test(ragUrl)) {
             ragUrl = `${window.location.origin}${ragUrl.startsWith('/') ? '' : '/'}${ragUrl}`;
           }
@@ -243,7 +253,11 @@ export default function usePureChatAgent(
           ],
         ]);
 
+        // Force relative paths in production (avoid localhost URLs in Azure)
         let basePath = import.meta.env.VITE_API_BASE || '/api';
+        if (basePath.includes('127.0.0.1') || basePath.includes('localhost')) {
+          basePath = '/api';
+        }
         if (!/^https?:\/\//.test(basePath)) {
           basePath = `${window.location.origin}${basePath.startsWith('/') ? '' : '/'}${basePath}`;
         }
@@ -251,11 +265,11 @@ export default function usePureChatAgent(
         const llm = new ChatOpenAI({
           modelName: 'o3-mini',
           temperature: 1,
+          apiKey: FAKE_OPENAI_KEY,
           configuration: { 
             baseURL,
             timeout: 180000, // 3 minutes to account for retry delays
           },
-          openAIApiKey: FAKE_OPENAI_KEY,
         });
 
         const agent = createToolCallingAgent({ llm, tools, prompt });

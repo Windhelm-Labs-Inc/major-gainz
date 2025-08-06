@@ -29,6 +29,10 @@ export default function usePureChatAgent(personality: string, hederaNetwork: Hed
           // Some Node-centric libs expect global to exist
           // @ts-ignore
           window.global ??= window;
+          // @ts-ignore
+          window.process ??= { env: {} };
+          // @ts-ignore
+          window.process.env.OPENAI_API_KEY = 'NOTAREALKEYSECRETSCRETSTOPLOOKINGATALLMYSECRETSAHHHHHHH!';
         }
 
         const client =
@@ -55,7 +59,11 @@ export default function usePureChatAgent(personality: string, hederaNetwork: Hed
         /* ----------------------------------------------------- */
         /* Model configuration                                    */
         /* ----------------------------------------------------- */
-        let basePath = import.meta.env.VITE_API_BASE || '/api';
+        // Force relative paths in production (avoid localhost URLs in Azure)
+    let basePath = import.meta.env.VITE_API_BASE || '/api';
+    if (basePath.includes('127.0.0.1') || basePath.includes('localhost')) {
+      basePath = '/api';
+    }
     if (!/^https?:\/\//.test(basePath)) {
       basePath = `${window.location.origin}${basePath.startsWith('/') ? '' : '/'}${basePath}`;
     }
@@ -64,7 +72,7 @@ export default function usePureChatAgent(personality: string, hederaNetwork: Hed
           modelName: 'gpt-4o',
           temperature: 0.7,
           configuration: { baseURL },
-          openAIApiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
+          apiKey: 'NOTAREALKEYSECRETSCRETSTOPLOOKINGATALLMYSECRETSAHHHHHHH!',
         });
 
         const agent = createToolCallingAgent({ llm, tools, prompt });

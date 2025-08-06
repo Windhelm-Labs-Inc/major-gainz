@@ -28,7 +28,11 @@ export default function usePureChatPortfolio(walletAddress?: string) {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
       try {
-        const baseURL = import.meta.env.VITE_API_BASE || '/api';
+        // Force relative paths in production (avoid localhost URLs in Azure)
+        let baseURL = import.meta.env.VITE_API_BASE || '/api';
+        if (baseURL.includes('127.0.0.1') || baseURL.includes('localhost')) {
+          baseURL = '/api';
+        }
         console.log('[usePureChatPortfolio] Fetching data for:', walletAddress);
         console.log('[usePureChatPortfolio] Base URL:', baseURL);
         
