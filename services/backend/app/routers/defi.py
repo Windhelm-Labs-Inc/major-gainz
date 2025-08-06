@@ -2,6 +2,9 @@
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, Dict, Any
+from functools import lru_cache
+import time
+from datetime import datetime
 import re
 
 from ..settings import logger
@@ -250,6 +253,53 @@ async def get_saucerswap_pools(
             status_code=500,
             detail=f"Failed to fetch SaucerSwap pools: {str(e)}"
         )
+
+
+@router.get("/pools/summary")
+async def get_pools_summary(
+    account_id: Optional[str] = Query(None, description="Hedera account to attach user positions"),
+    testnet: bool = Query(False, description="Use testnet API")
+) -> Dict[str, Any]:
+    """Return a consolidated snapshot of all SaucerSwap pools (v1, v2, farms, vaults)
+    and Bonzo markets in a single call. Aims to minimise external API hits by
+    caching results for 10 minutes per network.
+    Optionally merges user-specific positions when *account_id* is provided."""
+    logger.info(f"Pools summary requested (addr={account_id}, testnet={testnet})")
+
+    try:
+        # --- global cache bucket (10-minute windows) --------------------------------
+        bucket = int(time.time() // 600)
+
+        @lru_cache(maxsize=8)
+        def _cached_global(bucket: int, testnet: bool):  # noqa: E501
+            svc = DeFiProfileService(testnet=testnet)
+            data = {
+                "saucerswap": {
+                    "v1": svc.saucerswap.get_all_pools_v1(),
+                    "v2": svc.saucerswap.get_all_pools_v2(),
+                    "farms": svc.saucerswap.get_all_farms(),
+                    "vaults": []  # placeholder – implement if available
+                },
+                "bonzo": svc.bonzo.fetch_all_pools()
+            }
+            return data
+
+        summary_data = _cached_global(bucket, testnet)
+
+        # Attach user positions if requested ---------------------------------------
+        if account_id:
+            service = DeFiProfileService(testnet=testnet)
+            positions = service.get_defi_profile(account_id, include_risk_analysis=False)
+            summary_data = {**summary_data, "user_positions": positions}
+
+        return {
+            "pools": summary_data,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error building pools summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/pools/bonzo")

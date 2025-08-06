@@ -25,4 +25,50 @@
 .select-address-btn:disabled {
   background-color: #6b7280;
   cursor: not-allowed;
+}
+
+/* Navigation Bar Styles */
+.navigation-bar {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 1000;
+}
+
+.nav-button-group {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-btn {
+  padding: 8px 16px;
+  border-radius: 9999px; /* Full border radius for pill shape */
+  border: 1px solid #d1d5db;
+  background-color: #f9fafb;
+  color: #6b7280;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.nav-btn:hover {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.nav-btn--active {
+  background-color: #4ade80;
+  color: white;
+  border-color: #4ade80;
+}
+
+.nav-btn--active:hover {
+  background-color: #22c55e;
+  border-color: #22c55e;
+}
+
+.nav-btn:focus {
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.2);
 } 

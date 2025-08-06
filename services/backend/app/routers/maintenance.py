@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks
 
-from ..crud import refresh_all_tokens
+from ..crud_saucerswap import refresh_all_tokens
 
 router = APIRouter(tags=["maintenance"])
 

@@ -1,188 +1,198 @@
-"""Chat proxy API endpoint for secure OpenAI integration."""
+"""OpenAI API Proxy with Rate Limiting and Retry Logic
+
+This router provides a proxy that injects the API key and handles
+rate limiting with exponential backoff and retry logic.
+"""
+
+from __future__ import annotations
 
 import os
 import asyncio
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+import random
+import time
+from typing import Dict, Any
 import httpx
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..settings import logger
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+# Environment configuration
+PROXY_TIMEOUT: float = float(os.getenv("OPENAI_PROXY_TIMEOUT", "120"))  # Increased for retries
+MAX_RETRIES: int = int(os.getenv("OPENAI_MAX_RETRIES", "5"))
+BASE_DELAY: float = float(os.getenv("OPENAI_BASE_DELAY", "1.0"))  # Base delay in seconds
+MAX_DELAY: float = float(os.getenv("OPENAI_MAX_DELAY", "60.0"))  # Max delay in seconds
+
+router = APIRouter(tags=["openai_proxy"])
 
 
-class ChatMessage(BaseModel):
-    role: str  # "user", "assistant", "system"
-    content: str
+async def calculate_backoff_delay(attempt: int, base_delay: float = BASE_DELAY, max_delay: float = MAX_DELAY) -> float:
+    """Calculate exponential backoff delay with jitter."""
+    # Exponential backoff: base_delay * 2^attempt
+    delay = base_delay * (2 ** attempt)
+    
+    # Add jitter to avoid thundering herd (±25% random variation)
+    jitter = delay * 0.25 * (2 * random.random() - 1)
+    delay += jitter
+    
+    # Cap at max_delay
+    return min(delay, max_delay)
 
 
-class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
-    model: Optional[str] = "gpt-4o"
-    max_tokens: Optional[int] = 2000
-    temperature: Optional[float] = 0.7
-    portfolio_context: Optional[Dict[str, Any]] = None
-    scratchpad_context: Optional[str] = None
+async def make_openai_request(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    headers: Dict[str, str],
+    body: bytes,
+    attempt: int = 0
+) -> httpx.Response:
+    """Make request to OpenAI with retry logic for rate limiting."""
+    
+    try:
+        response = await client.request(
+            method=method,
+            url=url,
+            headers=headers,
+            content=body,
+        )
+        
+        # Handle rate limiting with exponential backoff
+        if response.status_code == 429:
+            if attempt < MAX_RETRIES:
+                # Extract retry-after header if present
+                retry_after = response.headers.get("retry-after")
+                if retry_after:
+                    try:
+                        # OpenAI sometimes sends retry-after in seconds
+                        delay = float(retry_after)
+                        # Cap the delay to our max
+                        delay = min(delay, MAX_DELAY)
+                    except (ValueError, TypeError):
+                        # Fallback to exponential backoff
+                        delay = await calculate_backoff_delay(attempt)
+                else:
+                    delay = await calculate_backoff_delay(attempt)
+                
+                logger.warning(
+                    "Rate limited (429) on attempt %d/%d for %s %s. Retrying in %.2fs",
+                    attempt + 1, MAX_RETRIES + 1, method, url, delay
+                )
+                
+                await asyncio.sleep(delay)
+                return await make_openai_request(client, method, url, headers, body, attempt + 1)
+            else:
+                logger.error(
+                    "Max retries (%d) exceeded for %s %s. Returning 429.",
+                    MAX_RETRIES, method, url
+                )
+                
+        # Handle other server errors with limited retry
+        elif response.status_code >= 500 and attempt < 2:  # Only retry server errors twice
+            delay = await calculate_backoff_delay(attempt, base_delay=0.5, max_delay=5.0)
+            logger.warning(
+                "Server error (%d) on attempt %d/3 for %s %s. Retrying in %.2fs",
+                response.status_code, attempt + 1, method, url, delay
+            )
+            await asyncio.sleep(delay)
+            return await make_openai_request(client, method, url, headers, body, attempt + 1)
+            
+        return response
+        
+    except httpx.TimeoutException:
+        if attempt < 2:  # Retry timeouts twice
+            delay = await calculate_backoff_delay(attempt, base_delay=2.0, max_delay=10.0)
+            logger.warning(
+                "Request timeout on attempt %d/3 for %s %s. Retrying in %.2fs",
+                attempt + 1, method, url, delay
+            )
+            await asyncio.sleep(delay)
+            return await make_openai_request(client, method, url, headers, body, attempt + 1)
+        else:
+            logger.error("Request timeout after 3 attempts for %s %s", method, url)
+            raise
+    
+    except Exception as e:
+        logger.error("Unexpected error for %s %s: %s", method, url, str(e))
+        raise
 
 
-class ChatResponse(BaseModel):
-    message: str
-    usage: Optional[Dict[str, Any]] = None
+@router.api_route("/v1/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def openai_proxy(full_path: str, request: Request):
+    """Proxy with rate limiting, exponential backoff, and retry logic."""
 
-
-def get_openai_api_key() -> str:
-    """Get OpenAI API key from environment variables."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(
-            status_code=500, 
-            detail="OpenAI API key not configured on server"
-        )
-    return api_key
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured on server")
 
+    # Build target URL
+    query_string: str | bytes = request.url.query
+    target_url = f"https://api.openai.com/v1/{full_path}"
+    if query_string:
+        target_url += f"?{query_string}"
 
-@router.post("/completion", response_model=ChatResponse)
-async def chat_completion(request: ChatRequest) -> ChatResponse:
-    """
-    Secure proxy for OpenAI chat completions.
-    
-    This endpoint handles OpenAI API calls on behalf of the frontend,
-    keeping the API key secure on the backend only.
-    """
-    logger.info(f"Chat completion requested with {len(request.messages)} messages")
-    
+    # Copy headers except host and any existing authorization
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "authorization"}}
+    headers["Authorization"] = f"Bearer {api_key}"
+    # Remove content-length so httpx recalculates it correctly
+    headers.pop("content-length", None)
+
+    # Get request body
+    body = await request.body()
+
+    start_time = time.time()
+    logger.debug("Proxying %s %s", request.method, target_url)
+
     try:
-        api_key = get_openai_api_key()
-        
-        # Build system prompt with context
-        system_message = build_system_prompt(request.portfolio_context, request.scratchpad_context)
-        
-        # Prepare messages for OpenAI
-        openai_messages = []
-        if system_message:
-            openai_messages.append({
-                "role": "system",
-                "content": system_message
-            })
-        
-        # Add user messages
-        for msg in request.messages:
-            openai_messages.append({
-                "role": msg.role,
-                "content": msg.content
-            })
-        
-        # Call OpenAI API
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": request.model,
-                    "messages": openai_messages,
-                    "max_tokens": request.max_tokens,
-                    "temperature": request.temperature
-                }
+        # Make request with retry logic
+        async with httpx.AsyncClient(timeout=PROXY_TIMEOUT) as client:
+            response = await make_openai_request(
+                client=client,
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                body=body
             )
             
-            if response.status_code != 200:
-                logger.error(f"OpenAI API error: {response.status_code} - {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"OpenAI API error: {response.text}"
-                )
-            
-            result = response.json()
-            
-            # Extract response
-            message_content = result["choices"][0]["message"]["content"]
-            usage = result.get("usage", {})
-            
-            logger.info(f"Chat completion successful, tokens used: {usage.get('total_tokens', 'unknown')}")
-            
-            return ChatResponse(
-                message=message_content,
-                usage=usage
+            elapsed = time.time() - start_time
+            logger.debug(
+                "Proxy completed %s %s in %.2fs (status: %d)",
+                request.method, target_url, elapsed, response.status_code
             )
             
-    except HTTPException:
-        raise
+            # Forward response exactly as received but drop conflicted headers
+            proxy_headers = dict(response.headers)
+            proxy_headers.pop('transfer-encoding', None)
+            proxy_headers.pop('content-length', None)
+
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=proxy_headers,
+            )
+            
+    except httpx.TimeoutException:
+        elapsed = time.time() - start_time
+        logger.error("Proxy timeout after %.2fs for %s %s", elapsed, request.method, target_url)
+        raise HTTPException(status_code=504, detail="OpenAI API request timed out")
+        
     except Exception as e:
-        logger.error(f"Error in chat completion: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
+        elapsed = time.time() - start_time
+        logger.error(
+            "Proxy error after %.2fs for %s %s: %s",
+            elapsed, request.method, target_url, str(e)
         )
+        raise HTTPException(status_code=502, detail=f"OpenAI API request failed: {str(e)}")
 
 
-def build_system_prompt(portfolio_context: Optional[Dict[str, Any]], scratchpad_context: Optional[str]) -> str:
-    """Build system prompt with portfolio and scratchpad context."""
-    
-    base_prompt = """You are an advanced AI assistant specializing in cryptocurrency portfolio analysis and Hedera network DeFi protocols. You have access to comprehensive portfolio data, market statistics, and DeFi position information.
-
-Your expertise includes:
-- Portfolio composition analysis and optimization recommendations
-- Risk assessment across different cryptocurrency holdings
-- DeFi protocol analysis (SaucerSwap, Bonzo Finance) 
-- Market trend interpretation and technical analysis
-- Hedera network ecosystem insights
-
-Provide detailed, actionable insights based on the data provided. Be specific about numbers, percentages, and concrete recommendations."""
-
-    context_parts = [base_prompt]
-    
-    if portfolio_context:
-        context_parts.append(f"\n**Portfolio Context:**\n{format_portfolio_context(portfolio_context)}")
-    
-    if scratchpad_context:
-        context_parts.append(f"\n**Current Session Context:**\n{scratchpad_context}")
-        
-    return "\n".join(context_parts)
-
-
-def format_portfolio_context(portfolio: Dict[str, Any]) -> str:
-    """Format portfolio data for system prompt."""
-    if not portfolio:
-        return "No portfolio data available."
-    
-    context = []
-    
-    if "holdings" in portfolio and portfolio["holdings"]:
-        context.append(f"Portfolio Holdings ({len(portfolio['holdings'])} tokens):")
-        for holding in portfolio["holdings"][:10]:  # Top 10 holdings
-            symbol = holding.get("symbol", "Unknown")
-            amount = holding.get("amount", 0)
-            usd_value = holding.get("usd", 0)
-            percentage = holding.get("percent", 0)
-            context.append(f"- {symbol}: {amount:.4f} tokens (${usd_value:.2f}, {percentage:.1f}%)")
-    
-    if "totalUsd" in portfolio:
-        context.append(f"\nTotal Portfolio Value: ${portfolio['totalUsd']:.2f}")
-    
-    return "\n".join(context)
-
-
-@router.get("/health")
+@router.get("/openai/health")
 async def health_check():
-    """Health check for chat service."""
     try:
-        # Check if OpenAI API key is configured
-        api_key = os.getenv("OPENAI_API_KEY")
-        has_api_key = bool(api_key and api_key != "PLACEHOLDER_FOR_BACKEND_INTEGRATION")
-        
+        configured = bool(os.getenv("OPENAI_API_KEY"))
+        return {"status": "healthy", "openai_configured": configured}
+    except Exception as exc:  # pragma: no cover
+        logger.exception("OpenAI health check failed: %s", exc)
         return {
-            "status": "healthy",
-            "openai_configured": has_api_key,
-            "timestamp": "2024-01-01T00:00:00Z"  # Could use actual timestamp
-        }
-    except Exception as e:
-        logger.error(f"Chat health check failed: {e}")
-        return {
-            "status": "unhealthy", 
-            "error": str(e),
-            "openai_configured": False
+            "status": "unhealthy",
+            "openai_configured": False,
+            "error": str(exc),
         }

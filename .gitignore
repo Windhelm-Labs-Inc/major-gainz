@@ -220,6 +220,8 @@ services/agent_support/coverage/
 
 *.ipynb_checkpoints/
 
+**/**.log**
+
 .secrets
 *.key
 *.pem
@@ -231,3 +233,4 @@ test-results.xml
 
 **.*.env
 **/ohlcv.db
+**/*.bak

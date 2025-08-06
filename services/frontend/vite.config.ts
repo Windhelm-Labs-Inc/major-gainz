@@ -1,16 +1,36 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Determine backend URL based on environment
-// In Docker: backend is internal on localhost
-// In local dev: backend is on 0.0.0.0 (for cross-platform compatibility)
-const backendUrl = process.env.DOCKER_ENV === 'true' ? 'http://127.0.0.1:8000' : 'http://0.0.0.0:8000'
+// Runtime paths – same bundle works everywhere
+const apiBase   = process.env.VITE_API_BASE || '/api'
+const ragBase   = process.env.VITE_RAG_BASE || '/mcp'
+const backendPort = process.env.BACKEND_PORT || '8000'
+const backendUrl = `http://127.0.0.1:${backendPort}`
 
 // https://vitejs.dev/config/
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
+
+const emptyModule = resolve(dirname(fileURLToPath(import.meta.url)), 'src/empty-module.js')
+
 export default defineConfig({
   plugins: [react()],
   
   // SECURE BUILD: Bundle everything, expose nothing
+  resolve: {
+    alias: {
+      'node:stream': 'stream-browserify',
+      stream: 'stream-browserify',
+      'node:path': 'path-browserify',
+      path: 'path-browserify',
+      'node:process': 'process/browser',
+      process: 'process/browser',
+      fs: emptyModule,
+      'node:fs': emptyModule,
+      child_process: emptyModule,
+    },
+  },
+
   build: {
     outDir: 'dist',
     sourcemap: false, // No source maps in production
@@ -33,34 +53,24 @@ export default defineConfig({
     open: false,
     fs: {
       strict: true,
-      allow: ['src', 'public'], // Minimal for dev only
+      allow: ['src', 'public', 'node_modules'], // Include node_modules for CSS like KaTeX
       deny: ['appSettings.json', '.env*', '../*', '*.config.*']
     },
     proxy: {
-      '/ohlcv': backendUrl,
-      '/tokens': backendUrl, 
-      '/portfolio': backendUrl,
-      '/refresh': backendUrl,
-      '/token_holdings': backendUrl,
-      '/defi': backendUrl,
-      '/chat': backendUrl
+      [apiBase]: backendUrl,
+      [ragBase]: backendUrl,
     }
   },
   
   // PREVIEW SERVER: Serves built files only (SECURE!)
   preview: {
     port: 8080,
-    allowedHosts: ['app.trenchtrenchtesttest.dev', 'localhost', '127.0.0.1'],
+    allowedHosts: 'all', // Allow all hosts for Docker development
     host: '0.0.0.0',
     open: false,
     proxy: {
-      '/ohlcv': 'http://127.0.0.1:8000',
-      '/tokens': 'http://127.0.0.1:8000',
-      '/portfolio': 'http://127.0.0.1:8000', 
-      '/refresh': 'http://127.0.0.1:8000',
-      '/token_holdings': 'http://127.0.0.1:8000',
-      '/defi': 'http://127.0.0.1:8000',
-      '/chat': 'http://127.0.0.1:8000'
+      [apiBase]: backendUrl,
+      [ragBase]: backendUrl,
     }
   },
   

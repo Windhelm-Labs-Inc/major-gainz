@@ -37,13 +37,6 @@ HEDERA_BASE_URL = "https://mainnet-public.mirrornode.hedera.com/api/v1"
 HEDERA_ACCOUNTS_ENDPOINT = f"{HEDERA_BASE_URL}/accounts"
 HEDERA_TOKENS_ENDPOINT = f"{HEDERA_BASE_URL}/tokens"
 
-# --- Balance Thresholds ---
-# Minimum balance to be included in the results
-MIN_BALANCE_THRESHOLDS = {
-    "HBAR": 1_000_000_000,  # 10 HBAR
-    "SAUCE": 1,
-    "KARATE": 1
-}
 
 # --- Progress Reporting ---
 PROGRESS_REPORT_INTERVAL = 20  # Print progress every 20 API requests
@@ -88,14 +81,18 @@ def save_decimals_config(decimals_data: Dict[str, int]) -> None:
     """Save the token decimals configuration."""
     save_config_to_json(DECIMALS_CONFIG_PATH, decimals_data)
 
-def load_app_settings() -> Dict:
-    """Load the frontend app settings."""
-    return load_config_from_json(APP_SETTINGS_PATH)
+# Getting rid of old appSettings.json 
+def get_saucerswap_api_key() -> str:
+    """Retrieve the SaucerSwap API key from environment variables.
 
-def get_saucerswap_api_key() -> Optional[str]:
-    """Extract the SaucerSwap API key from app settings."""
-    settings = load_app_settings()
-    return settings.get("SAUCER_SWAP_API_KEY")
+    Raises:
+        ValueError: If the SAUCER_SWAP_API_KEY is not set in the environment.
+    """
+    api_key = os.getenv("SAUCER_SWAP_API_KEY")
+    if not api_key:
+        raise ValueError("SAUCER_SWAP_API_KEY environment variable not set.")
+    return api_key
+
 
 # We return the Path to enable easy path arithmetic with the `/` operator (Path.__truediv__).
 from pathlib import Path

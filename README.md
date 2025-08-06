@@ -51,16 +51,18 @@ make dev-secure
 ```bash
 # Docker Compose
 make docker-compose-dev
-
-# Or use platform-specific scripts:
-./docker-build-and-run.sh        # Linux/macOS
-./docker-build-and-run.ps1       # Windows PowerShell
-./docker-build-and-run.bat       # Windows Command Prompt
 ```
 
+## Temporarily removed (can be restored on demand)
+
+* ~~docker-build-and-run.sh~~   – Linux / macOS  
+* ~~docker-build-and-run.ps1~~  – Windows PowerShell  
+* ~~docker-build-and-run.bat~~  – Windows Command Prompt
+
+
 The application will be available at:
-- **Frontend**: http://0.0.0.0:3000
-- **Backend**: http://0.0.0.0:8000
+- **Frontend**: http://localhost:3000
+- **Backend**: http://localhost:8000
 
 ## Core Features
 
