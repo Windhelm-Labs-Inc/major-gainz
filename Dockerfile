@@ -99,7 +99,7 @@ BACKEND_PID=$!
 cd /app/services/agent_support
 PYTHONPATH=/app/services/agent_support/agent_support:${PYTHONPATH:-} \
 PATH=/agent_support_venv/bin:${PATH} \
-MCP_PORT=${MCP_PORT:-9090} /agent_support_venv/bin/python -m agent_support.hedera_rag_server.server &
+/agent_support_venv/bin/python -m agent_support.hedera_rag_server.server &
 RAG_PID=$!
 
 trap "kill $BACKEND_PID $RAG_PID" TERM INT
