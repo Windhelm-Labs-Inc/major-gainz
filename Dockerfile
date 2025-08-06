@@ -61,7 +61,9 @@ WORKDIR /app
 COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-deps /usr/local/bin /usr/local/bin
 # Copy dedicated agent_support virtualenv
-COPY --from=python-deps ${AGENT_VENV_PATH} /agent_support_venv
+COPY --from=python-deps /build/agent_support/.venv /agent_support_venv
+# Fix virtualenv paths by updating pyvenv.cfg
+RUN sed -i 's|/build/agent_support/.venv|/agent_support_venv|g' /agent_support_venv/pyvenv.cfg || true
 
 # --- Application code --------------------------------------------------------
 COPY services/backend/app ./services/backend/app
@@ -97,7 +99,7 @@ BACKEND_PID=$!
 cd /app/services/agent_support
 PYTHONPATH=/app/services/agent_support/agent_support:${PYTHONPATH:-} \
 PATH=/agent_support_venv/bin:${PATH} \
-MCP_PORT=${MCP_PORT:-9090} python -m agent_support.hedera_rag_server.server &
+MCP_PORT=${MCP_PORT:-9090} /agent_support_venv/bin/python -m agent_support.hedera_rag_server.server &
 RAG_PID=$!
 
 trap "kill $BACKEND_PID $RAG_PID" TERM INT

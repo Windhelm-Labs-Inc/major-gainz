@@ -7,8 +7,8 @@ Dockerfile
 .dockerignore
 
 # Documentation
-README.md
-*.md
+
+
 
 # Environment and IDE files
 .env
@@ -18,6 +18,8 @@ README.md
 .idea
 *.swp
 *.swo
+
+**/**.poetry.lock
 
 # Backend Python files
 services/backend/__pycache__
