@@ -55,7 +55,11 @@ export default function usePureChatAgent(personality: string, hederaNetwork: Hed
         /* ----------------------------------------------------- */
         /* Model configuration                                    */
         /* ----------------------------------------------------- */
-        const baseURL = `${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/v1`;
+        let basePath = import.meta.env.VITE_API_BASE || '/api';
+    if (!/^https?:\/\//.test(basePath)) {
+      basePath = `${window.location.origin}${basePath.startsWith('/') ? '' : '/'}${basePath}`;
+    }
+    const baseURL = `${basePath}/v1`;
         const llm = new ChatOpenAI({
           modelName: 'gpt-4o',
           temperature: 0.7,

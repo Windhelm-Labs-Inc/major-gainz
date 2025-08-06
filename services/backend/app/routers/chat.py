@@ -159,11 +159,15 @@ async def openai_proxy(full_path: str, request: Request):
                 request.method, target_url, elapsed, response.status_code
             )
             
-            # Forward response exactly as received
+            # Forward response exactly as received but drop conflicted headers
+            proxy_headers = dict(response.headers)
+            proxy_headers.pop('transfer-encoding', None)
+            proxy_headers.pop('content-length', None)
+
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=proxy_headers,
             )
             
     except httpx.TimeoutException:

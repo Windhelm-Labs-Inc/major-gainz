@@ -194,7 +194,10 @@ export default function usePureChatAgent(
         // Load external MCP tools (Hedera RAG server)
         try {
           const { MultiServerMCPClient } = await import('@langchain/mcp-adapters');
-          const ragUrl = import.meta.env.VITE_RAG_MCP_URL || `${window.location.origin}/mcp`;
+          let ragUrl = import.meta.env.VITE_RAG_BASE || '/mcp';
+          if (!/^https?:\/\//.test(ragUrl)) {
+            ragUrl = `${window.location.origin}${ragUrl.startsWith('/') ? '' : '/'}${ragUrl}`;
+          }
           const mcpClient = new MultiServerMCPClient({
             hedera_rag: {
               url: ragUrl,
@@ -240,7 +243,11 @@ export default function usePureChatAgent(
           ],
         ]);
 
-        const baseURL = `${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/v1`;
+        let basePath = import.meta.env.VITE_API_BASE || '/api';
+        if (!/^https?:\/\//.test(basePath)) {
+          basePath = `${window.location.origin}${basePath.startsWith('/') ? '' : '/'}${basePath}`;
+        }
+        const baseURL = `${basePath}/v1`;
         const llm = new ChatOpenAI({
           modelName: 'o3-mini',
           temperature: 1,

@@ -28,7 +28,7 @@ export default function usePureChatPortfolio(walletAddress?: string) {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
       try {
-        const baseURL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
+        const baseURL = import.meta.env.VITE_API_BASE || '/api';
         console.log('[usePureChatPortfolio] Fetching data for:', walletAddress);
         console.log('[usePureChatPortfolio] Base URL:', baseURL);
         

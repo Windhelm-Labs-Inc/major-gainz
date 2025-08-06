@@ -90,7 +90,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     for (const symbol of symbols) {
       try {
-        const base = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
+        const base = import.meta.env.VITE_API_BASE || '/api'
         const [meanResp, stdResp, logReturnsResp] = await Promise.all([
           fetch(`${base}/ohlcv/${symbol}/mean_return?days=30`),
           fetch(`${base}/ohlcv/${symbol}/return_std?days=30`),
@@ -160,9 +160,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     /* --------------------------------------------------------- */
     /* LLM (pointing to backend proxy)                           */
     /* --------------------------------------------------------- */
-    const baseURL = `${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'}/v1`
+    let basePath = import.meta.env.VITE_API_BASE || '/api'
+    if (!/^https?:\/\//.test(basePath)) {
+      basePath = `${window.location.origin}${basePath.startsWith('/') ? '' : '/'}${basePath}`
+    }
+    const baseURL = `${basePath}/v1`
     console.log('[ChatWindow] Using baseURL:', baseURL)
-    console.log('[ChatWindow] VITE_BACKEND_URL:', import.meta.env.VITE_BACKEND_URL)
+    console.log('[ChatWindow] VITE_API_BASE:', import.meta.env.VITE_API_BASE)
     
     const llm = new ChatOpenAI({
       modelName: 'gpt-4o',
@@ -263,8 +267,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     /* --------------------------------------------------------- */
     try {
       const { MultiServerMCPClient } = await import('@langchain/mcp-adapters')
-      const ragUrl =
-        import.meta.env.VITE_RAG_MCP_URL || `${window.location.origin}/mcp`
+      let ragUrl = import.meta.env.VITE_RAG_BASE || '/mcp'
+      if (!/^https?:\/\//.test(ragUrl)) {
+        ragUrl = `${window.location.origin}${ragUrl.startsWith('/') ? '' : '/'}${ragUrl}`
+      }
       const mcpClient = new MultiServerMCPClient({
         hedera_rag: {
           url: ragUrl,

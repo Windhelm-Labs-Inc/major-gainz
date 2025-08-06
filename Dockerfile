@@ -12,7 +12,8 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
 
 # Pass the location of the MCP proxy so Vite embeds the correct URL
-ENV VITE_RAG_MCP_URL=/mcp/
+ENV VITE_API_BASE=/api
+ENV VITE_RAG_BASE=/mcp
 
 COPY services/frontend/package*.json ./
 # Install *all* deps (prod + dev) for build
