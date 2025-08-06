@@ -107,4 +107,21 @@ HEDERA_TOKEN_IDS: Dict[str, str] = {
     "HBAR": "hedera-hashgraph",
     "USDC": "usd-coin",
     # Add more mappings as needed for CoinGecko integration
-} 
+}
+
+# ---- OpenAI Proxy Configuration ----------------------------------------------
+# Environment variables for configuring the OpenAI API proxy with rate limiting
+# and retry logic (see app/routers/chat.py):
+#
+# OPENAI_API_KEY                - Your OpenAI API key (required)
+# OPENAI_PROXY_TIMEOUT         - Request timeout in seconds (default: 120)
+# OPENAI_MAX_RETRIES           - Maximum retry attempts for rate limits (default: 5)
+# OPENAI_BASE_DELAY            - Base delay for exponential backoff in seconds (default: 1.0)
+# OPENAI_MAX_DELAY             - Maximum delay between retries in seconds (default: 60.0)
+#
+# Example .env configuration:
+# OPENAI_API_KEY=sk-your-api-key-here
+# OPENAI_PROXY_TIMEOUT=120
+# OPENAI_MAX_RETRIES=5
+# OPENAI_BASE_DELAY=1.0
+# OPENAI_MAX_DELAY=60.0 

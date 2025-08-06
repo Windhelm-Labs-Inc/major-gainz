@@ -28,7 +28,6 @@ const WalletConnection: React.FC<WalletConnectionProps> = ({
 }) => {
   const [isConnecting, setIsConnecting] = useState(false)
 
-  const PREFERRED_NETWORK = hederaNetwork
   const TARGET_CHAIN_ID = MAINNET_CHAIN_ID
 
   const connectMetaMask = async () => {

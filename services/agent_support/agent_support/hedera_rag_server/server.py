@@ -1,5 +1,4 @@
 """Entry point that exposes an MCP server via Streamable HTTP transport.
-
 The server offers two simple tools:
 
 1. ``hello`` – classic "Hello World" style echo
@@ -19,6 +18,8 @@ from starlette.requests import Request
 from hedera_rag_server.logging_config import _root  # noqa: F401  # side-effect import
 
 import logging
+import os
+import socket
 logger = logging.getLogger(__name__)
 
 # Importing rag_index triggers loading/building the vector index at startup
@@ -129,13 +130,17 @@ if __name__ == "__main__":
     
     mcp_server_ready = asyncio.Event()
     
+    # ------------------------------------------------------------------
+    # MCP port configuration – keep fixed so the backend proxy matches
+    # ------------------------------------------------------------------
+    MCP_PORT = int(os.getenv("MCP_PORT", "9091"))
+
     def start_mcp_background():
-        """Start MCP server in background"""
-        # Give main thread time to set up
-        time.sleep(0.5)
+        """Start MCP server in background on a known port."""
+        time.sleep(0.5)  # give FastAPI time to boot
         try:
-            logger.info("Starting background MCP server on port 9091...")
-            mcp.run(transport="http", host="127.0.0.1", port=9091)
+            logger.info("Starting background MCP server on port %s...", MCP_PORT)
+            mcp.run(transport="http", host="127.0.0.1", port=MCP_PORT)
         except Exception as e:
             logger.error("Failed to start MCP server: %s", e)
     
@@ -145,6 +150,26 @@ if __name__ == "__main__":
     
     # Wait a moment for MCP server to start
     time.sleep(1)
+
+    # ---------------------------------------------------------
+    # Cleanup / graceful shutdown
+    # ---------------------------------------------------------
+    @app.on_event("shutdown")
+    def _shutdown_mcp() -> None:  # noqa: D401
+        """Ensure the background MCP server is stopped when FastAPI exits."""
+        logger.info("FastAPI shutdown: attempting to stop background MCP server")
+        # FastMCP exposes a ``shutdown`` method in recent versions; call if present
+        try:
+            if hasattr(mcp, "shutdown"):
+                mcp.shutdown()  # type: ignore[attr-defined]
+        except Exception as exc:  # pragma: no cover
+            logger.debug("mcp.shutdown() raised: %s", exc)
+
+        # Wait briefly for the background thread to exit
+        if mcp_thread.is_alive():
+            mcp_thread.join(timeout=2.0)
+            if mcp_thread.is_alive():
+                logger.warning("MCP background thread still alive after join timeout")
     
     # Create proxy endpoints for MCP with CORS
     @app.api_route("/mcp{path:path}", methods=["GET", "POST", "DELETE", "OPTIONS", "HEAD"])
@@ -199,7 +224,9 @@ if __name__ == "__main__":
             else:
                 target_path = "/mcp/" + path if path else "/mcp/"
             
-            url = f"http://127.0.0.1:9091{target_path}"
+            _proxy_host = os.getenv("MCP_HOST", "127.0.0.1")
+            _proxy_port = int(os.getenv("MCP_PORT", "9091"))
+            url = f"http://{_proxy_host}:{_proxy_port}{target_path}"
             
             # Get request body
             body = None
