@@ -1,0 +1,197 @@
+import { useState, useEffect, useCallback } from 'react';
+import { Portfolio, Holding, DefiData, ReturnsStats, HederaNetwork, MGError } from '../types';
+
+interface PortfolioConfig {
+  userAddress?: string;
+  network: HederaNetwork;
+  apiBaseUrl?: string;
+  autoRefresh?: boolean;
+  refreshInterval?: number;
+}
+
+interface PortfolioState {
+  portfolio: Portfolio | null;
+  defiData: DefiData | null;
+  returnsStats: ReturnsStats[] | null;
+  isLoading: boolean;
+  error: MGError | null;
+  lastUpdated: Date | null;
+}
+
+export const useMGPortfolio = (config: PortfolioConfig) => {
+  const [state, setState] = useState<PortfolioState>({
+    portfolio: null,
+    defiData: null,
+    returnsStats: null,
+    isLoading: false,
+    error: null,
+    lastUpdated: null,
+  });
+
+  const { 
+    userAddress, 
+    network = 'mainnet',
+    apiBaseUrl = '/api',
+    autoRefresh = false,
+    refreshInterval = 30000 // 30 seconds
+  } = config;
+
+  const fetchPortfolioData = useCallback(async () => {
+    if (!userAddress) {
+      setState(prev => ({
+        ...prev,
+        portfolio: null,
+        defiData: null,
+        returnsStats: null,
+        error: null,
+        isLoading: false,
+      }));
+      return;
+    }
+
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      // Fetch portfolio holdings
+      const portfolioResponse = await fetch(
+        `${apiBaseUrl}/portfolio/${userAddress}?network=${network}`
+      );
+      
+      if (!portfolioResponse.ok) {
+        throw new Error(`Portfolio fetch failed: ${portfolioResponse.status}`);
+      }
+
+      const portfolioData = await portfolioResponse.json();
+
+      // Fetch DeFi data
+      const defiResponse = await fetch(
+        `${apiBaseUrl}/defi/positions/${userAddress}?network=${network}`
+      );
+      
+      let defiData = null;
+      if (defiResponse.ok) {
+        defiData = await defiResponse.json();
+      }
+
+      // Fetch returns statistics
+      const returnsResponse = await fetch(
+        `${apiBaseUrl}/analytics/returns/${userAddress}?network=${network}`
+      );
+      
+      let returnsStats = null;
+      if (returnsResponse.ok) {
+        returnsStats = await returnsResponse.json();
+      }
+
+      // Transform portfolio data
+      const portfolio: Portfolio = {
+        holdings: portfolioData.holdings || [],
+        totalValue: portfolioData.totalValue || 0,
+        totalUsd: portfolioData.totalUsd || 0,
+      };
+
+      setState(prev => ({
+        ...prev,
+        portfolio,
+        defiData,
+        returnsStats,
+        isLoading: false,
+        lastUpdated: new Date(),
+      }));
+
+    } catch (error) {
+      console.error('Portfolio fetch error:', error);
+      
+      const mgError: MGError = {
+        message: error instanceof Error ? error.message : 'Failed to fetch portfolio data',
+        code: 'PORTFOLIO_FETCH_ERROR',
+        details: error,
+      };
+
+      setState(prev => ({
+        ...prev,
+        error: mgError,
+        isLoading: false,
+      }));
+    }
+  }, [userAddress, network, apiBaseUrl]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchPortfolioData();
+  }, [fetchPortfolioData]);
+
+  // Auto-refresh
+  useEffect(() => {
+    if (!autoRefresh || !userAddress) return;
+
+    const interval = setInterval(fetchPortfolioData, refreshInterval);
+    return () => clearInterval(interval);
+  }, [autoRefresh, userAddress, refreshInterval, fetchPortfolioData]);
+
+  const clearError = useCallback(() => {
+    setState(prev => ({ ...prev, error: null }));
+  }, []);
+
+  const refreshData = useCallback(() => {
+    return fetchPortfolioData();
+  }, [fetchPortfolioData]);
+
+  // Helper functions
+  const getTopHoldings = useCallback((limit: number = 5) => {
+    if (!state.portfolio?.holdings) return [];
+    return [...state.portfolio.holdings]
+      .sort((a, b) => b.usd - a.usd)
+      .slice(0, limit);
+  }, [state.portfolio]);
+
+  const getTotalValue = useCallback(() => {
+    return state.portfolio?.totalUsd || 0;
+  }, [state.portfolio]);
+
+  const getHoldingBySymbol = useCallback((symbol: string) => {
+    return state.portfolio?.holdings?.find(h => h.symbol === symbol);
+  }, [state.portfolio]);
+
+  const getPortfolioSummary = useCallback(() => {
+    if (!state.portfolio) return null;
+
+    const { holdings, totalUsd } = state.portfolio;
+    const holdingCount = holdings.length;
+    const topHolding = holdings[0];
+    const defiPositions = state.defiData?.positionCount || 0;
+
+    return {
+      totalValue: totalUsd,
+      holdingCount,
+      topHolding: topHolding?.symbol,
+      topHoldingPercent: topHolding ? (topHolding.usd / totalUsd) * 100 : 0,
+      defiPositions,
+      lastUpdated: state.lastUpdated,
+    };
+  }, [state.portfolio, state.defiData, state.lastUpdated]);
+
+  return {
+    // Data
+    portfolio: state.portfolio,
+    defiData: state.defiData,
+    returnsStats: state.returnsStats,
+    
+    // State
+    isLoading: state.isLoading,
+    error: state.error,
+    lastUpdated: state.lastUpdated,
+    
+    // Actions
+    refreshData,
+    clearError,
+    
+    // Helpers
+    getTopHoldings,
+    getTotalValue,
+    getHoldingBySymbol,
+    getPortfolioSummary,
+  };
+};
+
+export type MGPortfolioHook = ReturnType<typeof useMGPortfolio>;

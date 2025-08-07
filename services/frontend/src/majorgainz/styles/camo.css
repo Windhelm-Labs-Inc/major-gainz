@@ -1,0 +1,126 @@
+/* Major Gainz Camouflage Background Helpers */
+
+.majorgainz-camo-bg {
+  background-image: url('../assets/dollar_camo.gif');
+  background-size: 200px auto;
+  background-repeat: repeat;
+  background-position: center;
+}
+
+.majorgainz-camo-bg-cover {
+  background-image: url('../assets/dollar_camo.gif');
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.majorgainz-camo-bg-contain {
+  background-image: url('../assets/dollar_camo.gif');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* Gradient masks for subtle camo bleed effects */
+.majorgainz-camo-mask-left {
+  position: relative;
+}
+
+.majorgainz-camo-mask-left::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  background: linear-gradient(
+    to right,
+    rgba(66, 227, 193, 0.1) 0%,
+    rgba(66, 227, 193, 0.05) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.majorgainz-camo-mask-right {
+  position: relative;
+}
+
+.majorgainz-camo-mask-right::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  background: linear-gradient(
+    to left,
+    rgba(66, 227, 193, 0.1) 0%,
+    rgba(66, 227, 193, 0.05) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Camo overlay for subtle texture */
+.majorgainz-camo-overlay {
+  position: relative;
+}
+
+.majorgainz-camo-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url('../assets/dollar_camo.gif');
+  background-size: 400px auto;
+  background-repeat: repeat;
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Full-height sidebar camo */
+.majorgainz-sidebar-camo {
+  background-image: url('../assets/dollar_camo.gif');
+  background-size: 200px auto;
+  background-repeat: repeat-y;
+  background-position: center;
+}
+
+/* Animation for camo movement (subtle) */
+@keyframes majorgainz-camo-drift {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 200px; }
+}
+
+.majorgainz-camo-animated {
+  animation: majorgainz-camo-drift 30s linear infinite;
+}
+
+/* Responsive camo scaling */
+@media (max-width: 768px) {
+  .majorgainz-camo-bg,
+  .majorgainz-sidebar-camo {
+    background-size: 150px auto;
+  }
+  
+  .majorgainz-camo-overlay::before {
+    background-size: 300px auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .majorgainz-camo-bg,
+  .majorgainz-sidebar-camo {
+    background-size: 120px auto;
+  }
+  
+  .majorgainz-camo-overlay::before {
+    background-size: 240px auto;
+  }
+}

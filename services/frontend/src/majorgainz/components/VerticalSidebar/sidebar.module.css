@@ -1,0 +1,79 @@
+/* VerticalSidebar Component Styles */
+
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--mg-sidebar-width);
+  z-index: var(--mg-z-sidebar);
+  
+  /* Camo background */
+  background-image: url('../../assets/dollar_camo.gif');
+  background-size: 200px auto;
+  background-repeat: repeat-y;
+  background-position: center;
+  
+  /* Layout */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  /* Smooth transitions */
+  transition: transform var(--mg-transition);
+}
+
+.logoContainer {
+  width: 100%;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  /* Rotate the entire container */
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+.logo {
+  max-width: 180px;
+  max-height: 40px;
+  width: auto;
+  height: auto;
+  
+  /* Ensure SVG fills maintain aspect ratio */
+  object-fit: contain;
+  
+  /* Add slight drop shadow for depth */
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* Mobile: collapsed by default */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  
+  .sidebar.mobileOpen {
+    transform: translateX(0);
+  }
+  
+  /* Overlay for mobile when sidebar is open */
+  .sidebar.mobileOpen::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: var(--mg-sidebar-width);
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: -1;
+  }
+}
+
+/* Accessibility: Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
