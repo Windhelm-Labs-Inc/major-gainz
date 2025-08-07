@@ -155,6 +155,7 @@ docker-compose-dev:
 
 # Run using base + local overrides (.env, live mounts)
 docker-compose-local:
-	docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+	docker compose -f docker-compose.yml -f docker-compose.local.yml build --no-cache
+	docker compose -f docker-compose.yml -f docker-compose.local.yml up
 
 .PHONY: docker-compose-local
