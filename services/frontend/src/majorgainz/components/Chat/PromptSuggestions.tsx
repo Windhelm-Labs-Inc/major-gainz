@@ -91,7 +91,7 @@ const PromptSuggestions: React.FC<PromptSuggestionsProps> = ({
           }}
           aria-label="Show prompt suggestions"
         >
-          💡
+          +
         </button>
       </div>
     );
@@ -126,7 +126,7 @@ const PromptSuggestions: React.FC<PromptSuggestionsProps> = ({
           fontWeight: '600',
           color: 'var(--mg-gray-900)'
         }}>
-          💡 Prompt Suggestions
+          Prompt Suggestions
         </h3>
         {onToggleCollapse && (
           <button

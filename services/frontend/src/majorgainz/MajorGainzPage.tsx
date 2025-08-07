@@ -7,6 +7,7 @@ import SettingsDrawer from './components/SettingsDrawer';
 import TargetOverlay from './components/TargetOverlay';
 import ChatComponentRegistry from './components/ChatComponentRegistry';
 import { useMGAgent, useMGPortfolio, useMGScratchpad } from './hooks';
+import { useMGRank } from './hooks/useMGRank';
 import { ComponentInstruction, ChartContext } from './types';
 
 // Import styles
@@ -15,6 +16,7 @@ import './styles/camo.css';
 
 const MajorGainzPage: React.FC = () => {
   const [userAddress, setUserAddress] = useState<string>('');
+  const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTargetOverlay, setShowTargetOverlay] = useState(false);
@@ -29,6 +31,7 @@ const MajorGainzPage: React.FC = () => {
   });
 
   const scratchpad = useMGScratchpad();
+  const rankInfo = useMGRank(portfolio.portfolio);
 
   const context: ChartContext = {
     portfolio: portfolio.portfolio || undefined,
@@ -40,6 +43,7 @@ const MajorGainzPage: React.FC = () => {
 
   const agent = useMGAgent({
     context,
+    rankContext: { name: rankInfo.rank, hbarAmount: rankInfo.hbarAmount },
     personality: {
       name: 'Major Gainz',
       role: 'DeFi Operations Specialist',
@@ -109,6 +113,17 @@ const MajorGainzPage: React.FC = () => {
     }
   };
 
+  // Wallet provider callbacks
+  const handleWalletConnect = (walletType: string, address: string) => {
+    setConnectedWallet(walletType);
+    handleAddressChange(address);
+  };
+
+  const handleWalletDisconnect = () => {
+    setConnectedWallet(null);
+    handleAddressChange('');
+  };
+
   // Handle chart component rendering
   const handleComponentRender = (instruction: ComponentInstruction) => {
     return (
@@ -176,6 +191,8 @@ const MajorGainzPage: React.FC = () => {
           isLoading={portfolio.isLoading}
           error={portfolio.error?.message}
           onClick={() => setSettingsOpen(true)}
+          rankName={rankInfo.rank}
+          rankIconUrl={rankInfo.iconUrl}
         />
 
         {/* Chat Window */}
@@ -184,15 +201,18 @@ const MajorGainzPage: React.FC = () => {
           onSendMessage={agent.sendMessage}
           onComponentRender={handleComponentRender}
           isProcessing={agent.isProcessing}
+          quickActions={(
+            <QuickActions
+              onActionSelect={agent.sendMessage}
+              portfolio={portfolio.portfolio || undefined}
+              defiData={portfolio.defiData || undefined}
+              isLoading={agent.isProcessing || portfolio.isLoading}
+            />
+          )}
         />
 
         {/* Quick Actions */}
-        {/* <QuickActions
-          onActionSelect={agent.sendMessage}
-          portfolio={portfolio.portfolio || undefined}
-          defiData={portfolio.defiData || undefined}
-          isLoading={agent.isProcessing || portfolio.isLoading}
-        /> */}
+        {/* QuickActions moved under chat input via ChatWindow prop */}
       </div>
 
       {/* Settings Button */}
@@ -220,6 +240,9 @@ const MajorGainzPage: React.FC = () => {
         onAddressChange={handleAddressChange}
         balanceUsd={portfolio.getTotalValue()}
         isConnecting={portfolio.isLoading}
+        connectedWallet={connectedWallet}
+        onWalletConnect={handleWalletConnect}
+        onWalletDisconnect={handleWalletDisconnect}
       />
 
       {/* Target Overlay */}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HederaNetwork } from '../../types';
 import styles from './settingsDrawer.module.css';
+import WalletConnection from '../../../components/WalletConnection';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
@@ -9,6 +10,10 @@ interface SettingsDrawerProps {
   onAddressChange?: (address: string) => void;
   balanceUsd?: number;
   isConnecting?: boolean;
+  // Wallet connection integration
+  connectedWallet?: string | null;
+  onWalletConnect?: (walletType: string, address: string) => void;
+  onWalletDisconnect?: () => void;
 }
 
 const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
@@ -17,7 +22,10 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   userAddress,
   onAddressChange,
   balanceUsd,
-  isConnecting = false
+  isConnecting = false,
+  connectedWallet = null,
+  onWalletConnect,
+  onWalletDisconnect
 }) => {
   const [addressInput, setAddressInput] = useState(userAddress || '');
   const [addressError, setAddressError] = useState('');
@@ -68,6 +76,13 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddressSubmit();
+    }
+  };
+
   const handleDisconnect = () => {
     setAddressInput('');
     setAddressError('');
@@ -106,9 +121,7 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       <div className={`${styles.drawer} ${isOpen ? styles.open : ''}`}>
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>
-            ⚙️ Mission Control
-          </h2>
+          <h2 className={styles.title}>Mission Control</h2>
           <button
             className={styles.closeButton}
             onClick={onClose}
@@ -120,11 +133,28 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
 
         {/* Content */}
         <div className={styles.content}>
+          {/* Wallet Providers */}
+          <div className={styles.section}>
+            <h3 className={styles.sectionTitle}>Wallet Providers</h3>
+            <div className={styles.sectionDescription}>
+              Connect with MetaMask (EVM) or HashPack (Hedera). You can also enter an account ID manually below.
+            </div>
+            <WalletConnection
+              onConnect={(w, a) => {
+                onWalletConnect && onWalletConnect(w, a);
+              }}
+              onDisconnect={() => {
+                onWalletDisconnect && onWalletDisconnect();
+              }}
+              connectedWallet={connectedWallet}
+              walletAddress={userAddress || ''}
+              hederaNetwork={network}
+            />
+          </div>
+
           {/* Wallet Connection Section */}
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>
-              🎯 Target Wallet
-            </h3>
+            <h3 className={styles.sectionTitle}>Target Wallet</h3>
             <div className={styles.sectionDescription}>
               Connect to a Hedera mainnet wallet for portfolio recon.
             </div>
@@ -138,9 +168,7 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                 <div className={styles.walletBalance}>
                   {balanceUsd !== undefined ? formatBalance(balanceUsd) : 'Loading...'}
                 </div>
-                <div className={styles.networkBadge}>
-                  🌐 {network.toUpperCase()}
-                </div>
+                <div className={styles.networkBadge}>{network.toUpperCase()}</div>
               </div>
             )}
 
@@ -154,14 +182,13 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                 type="text"
                 value={addressInput}
                 onChange={(e) => setAddressInput(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="0.0.123456"
                 className={`${styles.input} ${addressError ? styles.error : ''}`}
                 disabled={connectionStatus === 'connecting'}
               />
               {addressError && (
-                <div className={`${styles.status} ${styles.statusError}`}>
-                  ⚠️ {addressError}
-                </div>
+                <div className={`${styles.status} ${styles.statusError}`}>{addressError}</div>
               )}
             </div>
 
@@ -173,32 +200,24 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                   onClick={handleAddressSubmit}
                   disabled={connectionStatus === 'connecting' || !addressInput.trim()}
                 >
-                  {connectionStatus === 'connecting' ? (
-                    <>🔄 Connecting...</>
-                  ) : (
-                    <>🔗 Connect Wallet</>
-                  )}
+                  {connectionStatus === 'connecting' ? 'Connecting…' : 'Connect Wallet'}
                 </button>
               ) : (
                 <button
                   className={`${styles.button} ${styles.buttonDanger}`}
                   onClick={handleDisconnect}
                 >
-                  🔌 Disconnect
+                  Disconnect
                 </button>
               )}
             </div>
 
             {/* Connection Status */}
             {connectionStatus === 'connected' && (
-              <div className={`${styles.status} ${styles.statusSuccess}`}>
-                ✅ Wallet connected successfully
-              </div>
+              <div className={`${styles.status} ${styles.statusSuccess}`}>Wallet connected successfully</div>
             )}
             {connectionStatus === 'error' && (
-              <div className={`${styles.status} ${styles.statusError}`}>
-                ❌ Failed to connect wallet
-              </div>
+              <div className={`${styles.status} ${styles.statusError}`}>Failed to connect wallet</div>
             )}
           </div>
 
@@ -206,9 +225,7 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
 
           {/* Network Information */}
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>
-              🌐 Network Status
-            </h3>
+            <h3 className={styles.sectionTitle}>Network Status</h3>
             <div className={styles.sectionDescription}>
               Major Gainz operates exclusively on Hedera mainnet for maximum security and real-time data.
             </div>
@@ -233,9 +250,7 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
 
           {/* Data & Privacy */}
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>
-              🔒 Data & Privacy
-            </h3>
+            <h3 className={styles.sectionTitle}>Data & Privacy</h3>
             <div className={styles.sectionDescription}>
               All data is fetched in real-time from public blockchain sources. No private keys or sensitive information is stored.
             </div>
@@ -257,9 +272,7 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
 
           {/* Version Info */}
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>
-              ℹ️ Mission Info
-            </h3>
+            <h3 className={styles.sectionTitle}>Mission Info</h3>
             <div style={{ fontSize: '0.875rem', color: 'var(--mg-gray-600)' }}>
               <div><strong>Major Gainz</strong> v1.0.0</div>
               <div>DeFi Operations Specialist</div>

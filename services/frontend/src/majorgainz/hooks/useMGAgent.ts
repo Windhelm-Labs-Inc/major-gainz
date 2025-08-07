@@ -92,6 +92,7 @@ interface AgentConfig {
   context?: ChartContext;
   apiBaseUrl?: string;    // default '/api'
   personality?: MGPersonality;
+  rankContext?: { name: string; hbarAmount: number };
 }
 
 interface AgentState {
@@ -110,13 +111,20 @@ export const useMGAgent = (config: AgentConfig = {}) => {
     setState({ isProcessing: true, error: null });
 
     try {
+      const contextualSystem = config.rankContext
+        ? `CONTEXT:\nUser rank: ${config.rankContext.name}\nHBAR holdings: ${Math.floor(config.rankContext.hbarAmount).toLocaleString()} HBAR\nUse rank only for addressing and immersion; never gate capabilities or accuracy.`
+        : undefined;
+
+      const messages = [
+        { role: 'system', content: personality.systemPrompt },
+        ...(contextualSystem ? [{ role: 'system', content: contextualSystem }] as any : []),
+        { role: 'user', content: message.trim() },
+      ];
+
       const payload = {
         model: 'o3-mini',
         temperature: 1,
-        messages: [
-          { role: 'system', content: personality.systemPrompt },
-          { role: 'user', content: message.trim() },
-        ],
+        messages,
       };
 
       const res = await fetch(completionsURL, {
@@ -134,7 +142,7 @@ export const useMGAgent = (config: AgentConfig = {}) => {
       setState({ isProcessing: false, error: { message: e.message || 'Unknown error', code: 'AGENT_ERROR', details: e } });
       return 'Communication error. Check network and retry.';
     }
-  }, [completionsURL, personality.systemPrompt]);
+  }, [completionsURL, personality.systemPrompt, config.rankContext]);
 
   return {
     isProcessing: state.isProcessing,

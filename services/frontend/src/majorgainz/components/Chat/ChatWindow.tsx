@@ -10,13 +10,15 @@ interface ChatWindowProps {
   onSendMessage?: (message: string) => Promise<string>;
   onComponentRender?: (instruction: ComponentInstruction) => React.ReactNode;
   isProcessing?: boolean;
+  quickActions?: React.ReactNode;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
   context,
   onSendMessage,
   onComponentRender,
-  isProcessing = false
+  isProcessing = false,
+  quickActions
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -149,6 +151,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Chat Input */}
+      {quickActions && (
+        <div style={{ padding: '8px 20px', marginTop: '-8px' }}>
+          {quickActions}
+        </div>
+      )}
+
       <ChatInput
         onSendMessage={handleSendMessage}
         disabled={isProcessing}

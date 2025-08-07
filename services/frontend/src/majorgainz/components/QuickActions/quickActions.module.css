@@ -1,31 +1,15 @@
 /* QuickActions Component Styles */
 
 .quickActions {
-  position: sticky;
-  bottom: calc(var(--mg-chat-input-height) + 12px);
-  left: 0;
-  right: 0;
-  z-index: 15;
-  
-  /* Centering */
+  /* Now a simple block under chat input */
+  position: static;
+  z-index: auto;
   display: flex;
   justify-content: center;
   align-items: center;
-  
-  /* Spacing */
-  padding: 12px 20px;
-  
-  /* Background blur effect */
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: linear-gradient(
-    to top,
-    rgba(255, 253, 246, 0.95) 0%,
-    rgba(255, 253, 246, 0.8) 100%
-  );
-  
-  /* Border for definition */
-  border-top: 1px solid rgba(222, 226, 230, 0.5);
+  padding: 12px 0;
+  background: transparent;
+  border-top: none;
 }
 
 .actionRow {
@@ -42,13 +26,13 @@
   background: var(--mg-white);
   border: 1px solid var(--mg-gray-300);
   border-radius: var(--mg-radius-pill); /* 32px pill already */
-  padding: 6px 20px;
+  padding: 8px 20px;
   
   /* Typography */
   font-family: var(--mg-font-family);
   font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--mg-gray-700);
+  font-weight: 600;
+  color: var(--mg-blue-900);
   text-decoration: none;
   white-space: nowrap;
   
@@ -68,9 +52,9 @@
 }
 
 .actionButton:hover {
-  border-color: var(--mg-mint-500);
-  background: var(--mg-mint-100);
-  color: var(--mg-gray-900);
+  border-color: var(--mg-blue-700);
+  background: #f3f6ff;
+  color: var(--mg-blue-900);
   transform: translateY(-1px);
   box-shadow: var(--mg-shadow);
 }
@@ -107,17 +91,7 @@
   justify-content: center;
 }
 
-.primary {
-  background: var(--mg-blue-900);
-  border-color: var(--mg-blue-900);
-  color: var(--mg-white);
-}
-
-.primary:hover {
-  background: var(--mg-blue-700);
-  border-color: var(--mg-blue-700);
-  color: var(--mg-white);
-}
+.primary { /* keep for future emphasis, unused in target */ }
 
 .primary:focus {
   border-color: var(--mg-blue-500);
@@ -126,17 +100,7 @@
     0 0 0 3px rgba(37, 99, 235, 0.2);
 }
 
-.mint {
-  background: var(--mg-mint-500);
-  border-color: var(--mg-mint-500);
-  color: var(--mg-white);
-}
-
-.mint:hover {
-  background: var(--mg-mint-300);
-  border-color: var(--mg-mint-300);
-  color: var(--mg-gray-900);
-}
+.mint { /* keep for future emphasis, unused in target */ }
 
 /* Icon styling */
 .icon {

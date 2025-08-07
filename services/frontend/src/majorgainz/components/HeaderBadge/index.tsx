@@ -7,6 +7,8 @@ interface HeaderBadgeProps {
   isLoading?: boolean;
   error?: string;
   onClick?: () => void;
+  rankName?: string;
+  rankIconUrl?: string;
 }
 
 const HeaderBadge: React.FC<HeaderBadgeProps> = ({
@@ -14,7 +16,9 @@ const HeaderBadge: React.FC<HeaderBadgeProps> = ({
   balanceUsd,
   isLoading = false,
   error,
-  onClick
+  onClick,
+  rankName,
+  rankIconUrl
 }) => {
   const formatAddress = (address: string) => {
     if (address.length <= 12) return address;
@@ -46,8 +50,8 @@ const HeaderBadge: React.FC<HeaderBadgeProps> = ({
         tabIndex={onClick ? 0 : undefined}
         aria-label={onClick ? "Open wallet settings" : "Wallet information"}
       >
-        {/* Wallet Address */}
-        <div className={styles.walletAddress}>
+        {/* Wallet Address (left pill segment) */}
+        <div className={styles.walletAddress} style={{ paddingRight: 8 }}>
           {walletAddress ? formatAddress(walletAddress) : (
             <button
               onClick={onClick}
@@ -66,13 +70,17 @@ const HeaderBadge: React.FC<HeaderBadgeProps> = ({
           )}
         </div>
 
-        {/* Chevron Icon */}
-        <div className={styles.chevron} aria-hidden="true">
-          ▲
+        {/* Rank Icon - overlaps seam */}
+        <div className={styles.rankIcon} title={rankName || 'Rank'} aria-hidden={!rankName ? 'true' : undefined}>
+          {rankIconUrl ? (
+            <img src={rankIconUrl} alt={rankName || 'Rank'} />
+          ) : (
+            <span className={styles.rankFallback}>▲</span>
+          )}
         </div>
 
-        {/* Balance */}
-        <div className={styles.balance}>
+        {/* Balance (right pill segment) */}
+        <div className={styles.balance} style={{ paddingLeft: 8 }}>
           {error ? (
             <span className={styles.error}>Error</span>
           ) : isLoading ? (
