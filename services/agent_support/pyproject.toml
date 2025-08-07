@@ -20,6 +20,7 @@ httpx = "^0.28.1"
 llama-index-core = "^0.10.20"
 llama-index-embeddings-huggingface = "^0.2.0"
 sentence-transformers = "^2.2.0"
+safetensors = "<0.4.0"
 # Install CPU-only build of PyTorch to keep images slim when containerising on non-macOS platforms.
 torch = { version = "2.1.0+cpu", source = "pytorch-cpu", markers = "platform_system != 'Darwin'" }
 

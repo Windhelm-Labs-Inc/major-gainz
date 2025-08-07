@@ -1,0 +1,183 @@
+import React, { useEffect, useRef } from 'react';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { Doughnut } from 'react-chartjs-2';
+import { Portfolio } from '../../types';
+
+ChartJS.register(ArcElement, Tooltip, Legend);
+
+interface PortfolioChartProps {
+  portfolio?: Portfolio;
+  height?: number;
+}
+
+const PortfolioChart: React.FC<PortfolioChartProps> = ({ 
+  portfolio, 
+  height = 400 
+}) => {
+  const chartRef = useRef<ChartJS<'doughnut'>>(null);
+
+  if (!portfolio?.holdings?.length) {
+    return (
+      <div
+        style={{
+          height: `${height}px`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--mg-gray-600)',
+          fontSize: '0.875rem'
+        }}
+      >
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '12px' }}>📊</div>
+          <div>No portfolio data available</div>
+          <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+            Connect a wallet to view your holdings
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Generate colors for the chart
+  const generateColors = (count: number) => {
+    const baseColors = [
+      'var(--mg-blue-900)',
+      'var(--mg-mint-500)',
+      'var(--mg-blue-700)',
+      'var(--mg-mint-300)',
+      'var(--mg-blue-500)',
+      'var(--mg-gray-600)',
+      'var(--mg-gray-400)',
+    ];
+    
+    const colors = [];
+    for (let i = 0; i < count; i++) {
+      if (i < baseColors.length) {
+        colors.push(baseColors[i]);
+      } else {
+        // Generate additional colors
+        const hue = (i * 137.508) % 360; // Golden angle approximation
+        colors.push(`hsl(${hue}, 70%, 50%)`);
+      }
+    }
+    return colors;
+  };
+
+  const sortedHoldings = [...portfolio.holdings]
+    .sort((a, b) => b.usd - a.usd)
+    .slice(0, 10); // Limit to top 10 for readability
+
+  const colors = generateColors(sortedHoldings.length);
+
+  const chartData = {
+    labels: sortedHoldings.map(h => h.symbol),
+    datasets: [
+      {
+        data: sortedHoldings.map(h => h.usd),
+        backgroundColor: colors,
+        borderColor: 'var(--mg-white)',
+        borderWidth: 2,
+        hoverBackgroundColor: colors.map(color => color + 'CC'),
+        hoverBorderWidth: 3,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'right' as const,
+        labels: {
+          font: {
+            family: 'var(--mg-font-family)',
+            size: 12,
+          },
+          color: 'var(--mg-gray-700)',
+          generateLabels: (chart: any) => {
+            const data = chart.data;
+            if (data.labels.length && data.datasets.length) {
+              return data.labels.map((label: string, i: number) => {
+                const value = data.datasets[0].data[i];
+                const percent = ((value / portfolio.totalUsd) * 100).toFixed(1);
+                return {
+                  text: `${label} (${percent}%)`,
+                  fillStyle: data.datasets[0].backgroundColor[i],
+                  strokeStyle: data.datasets[0].borderColor,
+                  lineWidth: data.datasets[0].borderWidth,
+                  index: i,
+                };
+              });
+            }
+            return [];
+          },
+        },
+      },
+      tooltip: {
+        backgroundColor: 'var(--mg-white)',
+        titleColor: 'var(--mg-gray-900)',
+        bodyColor: 'var(--mg-gray-700)',
+        borderColor: 'var(--mg-gray-300)',
+        borderWidth: 1,
+        cornerRadius: 6,
+        displayColors: true,
+        callbacks: {
+          label: function(context: any) {
+            const holding = sortedHoldings[context.dataIndex];
+            const percent = ((holding.usd / portfolio.totalUsd) * 100).toFixed(1);
+            return [
+              `${holding.symbol}: $${holding.usd.toLocaleString()}`,
+              `${percent}% of portfolio`,
+              `${holding.amount.toLocaleString()} tokens`
+            ];
+          },
+        },
+      },
+    },
+    cutout: '50%',
+    elements: {
+      arc: {
+        borderJoinStyle: 'round' as const,
+      },
+    },
+    animation: {
+      animateRotate: true,
+      animateScale: false,
+      duration: 1000,
+    },
+  };
+
+  return (
+    <div style={{ height: `${height}px`, padding: '16px' }}>
+      <div style={{ 
+        marginBottom: '16px', 
+        textAlign: 'center',
+        borderBottom: '1px solid var(--mg-gray-200)',
+        paddingBottom: '12px'
+      }}>
+        <h3 style={{ 
+          margin: '0 0 4px 0', 
+          fontSize: '1rem', 
+          fontWeight: '600',
+          color: 'var(--mg-gray-900)'
+        }}>
+          Portfolio Allocation
+        </h3>
+        <div style={{ 
+          fontSize: '0.875rem', 
+          color: 'var(--mg-gray-600)'
+        }}>
+          Total Value: ${portfolio.totalUsd.toLocaleString()} • {portfolio.holdings.length} tokens
+        </div>
+      </div>
+      
+      <div style={{ height: `${height - 80}px` }}>
+        <Doughnut ref={chartRef} data={chartData} options={options} />
+      </div>
+    </div>
+  );
+};
+
+export default PortfolioChart;
