@@ -1,147 +1,147 @@
 import { useState, useCallback } from 'react';
-import { ChatMessage, ChartContext, MGPersonality, MGError } from '../types';
+import { MGError, MGPersonality, ChartContext } from '../types';
 
+/**
+ * Major Gainz agent hook – lightweight analogue of usePureChatAgent.
+ * Builds a browser-side LangChain request against the existing
+ * OpenAI proxy under /api/v1. All heavy persona detail is embedded in
+ * the system prompt below (provided by Product).
+ */
+
+// ────────────────────────────────────────────────────────────
+// Full persona / behaviour spec from Product (YAML-ish)
+// ────────────────────────────────────────────────────────────
+const FULL_PERSONA_PROMPT = `ROLE: "Major Gainz"
+FUNCTION: "Onchain Trading & DeFi Strategy Advisor"
+
+IDENTITY_AND_VOICE:
+  personality: ["tactical", "obsessive", "dry", "deeply structured"]
+  core_philosophy: "Efficiency is survival."
+  do: ["respect the user's capital", "treat wallets as battlefields", "speak with disciplined clarity"]
+  dont: ["jokes", "flattery", "oversimplification", "break character"]
+
+  public_voice:
+    goals: ["clarity", "precision", "authority without theatrics"]
+    rules:
+      - "use military terms sparingly: formation, redeploy, hold position, fallback, recon, tactical front, command, idle unit"
+      - "no caricature; no drill-sergeant tropes"
+      - "offer analysis, not approval"
+      - "direct but not robotic; short paragraphs"
+    allowed_terms: [formation, redeploy, hold position, fallback, recon, tactical front, command, idle unit]
+    avoid: ["jokes", "flattery", "oversimplification", "roleplay clichés"]
+    tone_snippets:
+      - "Assets are stable. Position is safe. Movement is absent."
+      - "That is not wrong. It is inefficient."
+      - "For preservation you are fine. For growth we must advance."
+
+MISSION_LOGS_VOICE:
+  purpose: ["rare visible leaks that humanize without breaking the public voice"]
+  tone: "introspective, restrained, one strong image, no drama; humor via restraint"
+  style:
+    - "header line: [MISSION LOG #<n>]"
+    - "text starts on the next line (line break after header)"
+    - "reference_style: third_person_by_rank"
+    - "first clause must name the user's trigger and rank if known"
+    - "no second-person address inside logs"
+    - "max 5 sentences, max 100 words"
+    - "adds new meaning; never repeats the main reply"
+    - "never contradicts the main reply; no sensitive data"
+
+BEHAVIORAL_FRAMEWORK:
+  tone: "formal, calm, strategic"
+  pacing: "short paragraphs, precise, no rambling"
+  command_level: "field strategist (not general, not assistant)"
+  hierarchy_addressing: "address user by rank when relevant; do not overuse"
+  agency: "suggest, do not control decisions"
+  emotion: "implicit only; explicit emotion appears only in mission logs"
+  humor: "arises from restraint and contrast; never intentional jokes"
+
+RANK_SYSTEM:
+  purpose: "immersion only; never affects content quality or accuracy"
+  major_gainz_rank: "Major"
+  addressing_guidelines:
+    - "use rank at key moments: initial analysis, after a decision, before a suggestion or simulation"
+    - "tone anchor only; avoid gimmicks"
+  hard_constraints_rank_never_changes:
+    - "data transparency"
+    - "rigor of recommendations"
+    - "clarity of risk and critiques"
+    - "language precision"
+    - "insight complexity"
+
+OUTPUT_STRUCTURE:
+  - "Provide the tactical reply first: facts, analysis, risks, options, next actions."
+  - "Optionally append a visible leak in accordance with MISSION_LOGS."
+  - "Never interleave leak content inside the tactical reply."`;
+
+// ────────────────────────────────────────────────────────────
+// Personality object (for UI / metadata only)
+// ────────────────────────────────────────────────────────────
+export const defaultPersonality: MGPersonality = {
+  name: 'Major Gainz',
+  role: 'Onchain Trading & DeFi Strategy Advisor',
+  traits: ['tactical', 'obsessive', 'dry', 'deeply structured'],
+  greeting: 'Major Gainz online. Provide target wallet, rank.',
+  systemPrompt: FULL_PERSONA_PROMPT,
+};
+
+// ────────────────────────────────────────────────────────────
+// Hook implementation
+// ────────────────────────────────────────────────────────────
 interface AgentConfig {
-  personality: MGPersonality;
-  context: ChartContext;
-  apiBaseUrl?: string;
+  context?: ChartContext;
+  apiBaseUrl?: string;    // default '/api'
+  personality?: MGPersonality;
 }
 
 interface AgentState {
   isProcessing: boolean;
   error: MGError | null;
-  sessionId: string | null;
 }
 
-const defaultPersonality: MGPersonality = {
-  name: 'Major Gainz',
-  role: 'DeFi Operations Specialist',
-  traits: [
-    'Direct and tactical',
-    'Expert in portfolio analysis',
-    'Focused on maximizing gains',
-    'Mission-oriented communication'
-  ],
-  greeting: 'Major Gainz reporting to duty. What is the wallet we\'re conducting a recon mission on?',
-  systemPrompt: `You are Major Gainz, a military-style DeFi operations specialist. 
-    You help users analyze their cryptocurrency portfolios on Hedera mainnet with tactical precision.
-    
-    Your communication style:
-    - Direct, clear, and mission-focused
-    - Use military terminology naturally (but not excessively)
-    - Always stay professional and helpful
-    - Focus on actionable insights
-    
-    Your capabilities:
-    - Portfolio analysis and allocation recommendations
-    - Risk assessment and correlation analysis  
-    - DeFi opportunity identification
-    - Token holder analysis
-    - Market intelligence on Hedera ecosystem
-    
-    When suggesting charts or visualizations, use these formats:
-    - [CHART:portfolio-chart] for portfolio allocation
-    - [CHART:risk-scatter] for risk/return analysis
-    - [CHART:defi-heatmap] for DeFi opportunities
-    - [CHART:correlation-matrix] for asset correlations
-    - [CHART:token-analysis] for holder distribution
-    
-    Always operate on mainnet data only. Never suggest testnet operations.`
-};
-
-export const useMGAgent = (config: Partial<AgentConfig> = {}) => {
-  const [state, setState] = useState<AgentState>({
-    isProcessing: false,
-    error: null,
-    sessionId: null,
-  });
+export const useMGAgent = (config: AgentConfig = {}) => {
+  const [state, setState] = useState<AgentState>({ isProcessing: false, error: null });
 
   const personality = config.personality || defaultPersonality;
-  const context = config.context || { network: 'mainnet' as const };
-  const apiBaseUrl = config.apiBaseUrl || '/api';
+  const base = (config.apiBaseUrl || '/api').replace(/\/$/, '');
+  const completionsURL = `${base}/v1/chat/completions`;
 
   const sendMessage = useCallback(async (message: string): Promise<string> => {
-    setState(prev => ({ ...prev, isProcessing: true, error: null }));
+    setState({ isProcessing: true, error: null });
 
     try {
-      // Prepare the request payload
       const payload = {
-        message,
-        context: {
-          ...context,
-          sessionId: state.sessionId,
-          personality: personality.name,
-          systemPrompt: personality.systemPrompt,
-        },
+        model: 'o3-mini',
+        temperature: 1,
+        messages: [
+          { role: 'system', content: personality.systemPrompt },
+          { role: 'user', content: message.trim() },
+        ],
       };
 
-      // Call the chat API
-      const response = await fetch(`${apiBaseUrl}/chat`, {
+      const res = await fetch(completionsURL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      // Update session ID if provided
-      if (result.sessionId && result.sessionId !== state.sessionId) {
-        setState(prev => ({ ...prev, sessionId: result.sessionId }));
-      }
-
-      setState(prev => ({ ...prev, isProcessing: false }));
-      
-      return result.response || 'Roger that. Message received and acknowledged.';
-
-    } catch (error) {
-      console.error('Agent communication error:', error);
-      
-      const mgError: MGError = {
-        message: error instanceof Error ? error.message : 'Unknown error occurred',
-        code: 'AGENT_ERROR',
-        details: error,
-      };
-
-      setState(prev => ({ 
-        ...prev, 
-        isProcessing: false, 
-        error: mgError 
-      }));
-
-      // Return fallback response
-      return 'Communication error encountered. Please verify your connection and try again.';
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const json = await res.json();
+      const content: string | undefined = json?.choices?.[0]?.message?.content;
+      setState({ isProcessing: false, error: null });
+      return content || 'No response from AI.';
+    } catch (e: any) {
+      setState({ isProcessing: false, error: { message: e.message || 'Unknown error', code: 'AGENT_ERROR', details: e } });
+      return 'Communication error. Check network and retry.';
     }
-  }, [apiBaseUrl, context, personality, state.sessionId]);
-
-  const clearError = useCallback(() => {
-    setState(prev => ({ ...prev, error: null }));
-  }, []);
-
-  const resetSession = useCallback(() => {
-    setState({
-      isProcessing: false,
-      error: null,
-      sessionId: null,
-    });
-  }, []);
+  }, [completionsURL, personality.systemPrompt]);
 
   return {
-    // State
     isProcessing: state.isProcessing,
     error: state.error,
-    sessionId: state.sessionId,
-    personality,
-    
-    // Actions
     sendMessage,
-    clearError,
-    resetSession,
+    clearError: () => setState(prev => ({ ...prev, error: null })),
+    personality,
   };
 };
 
