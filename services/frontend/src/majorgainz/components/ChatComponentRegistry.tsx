@@ -113,16 +113,21 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
   context
 }) => {
   const { type, title, height = 400, props = {} } = instruction;
+  // Allow per-component default sizing. Make portfolio chart significantly larger by default.
+  let resolvedHeight = height;
+  if (type === 'portfolio-chart' && (typeof height !== 'number' || height < 560)) {
+    resolvedHeight = 560;
+  }
 
   const renderComponent = () => {
     try {
       switch (type) {
         case 'portfolio-chart':
           return (
-            <Suspense fallback={<LoadingFallback height={height} />}>
+            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <PortfolioChart
                 portfolio={context?.portfolio}
-                height={height}
+                height={resolvedHeight}
                 {...props}
               />
             </Suspense>
@@ -130,10 +135,10 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
 
         case 'risk-scatter':
           return (
-            <Suspense fallback={<LoadingFallback height={height} />}>
+            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <RiskScatter
                 returnsStats={context?.returnsStats}
-                height={height}
+                height={resolvedHeight}
                 {...props}
               />
             </Suspense>
@@ -141,10 +146,10 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
 
         case 'defi-heatmap':
           return (
-            <Suspense fallback={<LoadingFallback height={height} />}>
+            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <DefiHeatmap
                 defiData={context?.defiData}
-                height={height}
+                height={resolvedHeight}
                 {...props}
               />
             </Suspense>
@@ -152,10 +157,10 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
 
         case 'correlation-matrix':
           return (
-            <Suspense fallback={<LoadingFallback height={height} />}>
+            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <CorrelationMatrix
                 returnsStats={context?.returnsStats}
-                height={height}
+                height={resolvedHeight}
                 {...props}
               />
             </Suspense>
@@ -163,10 +168,10 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
 
         case 'token-analysis':
           return (
-            <Suspense fallback={<LoadingFallback height={height} />}>
+            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <TokenHolderAnalysis
                 tokenData={props.tokenData || context?.portfolio?.holdings?.[0]}
-                height={height}
+                height={resolvedHeight}
                 {...props}
               />
             </Suspense>
@@ -176,7 +181,7 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
           return (
             <ErrorFallback 
               error={`Unknown component type: ${type}`}
-              height={height}
+              height={resolvedHeight}
             />
           );
       }
@@ -185,14 +190,14 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
       return (
         <ErrorFallback 
           error={`Failed to render ${type}: ${error}`}
-          height={height}
+          height={resolvedHeight}
         />
       );
     }
   };
 
   return (
-    <ComponentWrapper title={title} height={height}>
+    <ComponentWrapper title={title} height={resolvedHeight}>
       {renderComponent()}
     </ComponentWrapper>
   );

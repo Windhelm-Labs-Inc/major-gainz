@@ -35,7 +35,6 @@ const RiskScatter: React.FC<RiskScatterProps> = ({
         }}
       >
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>⚠️</div>
           <div>No risk data available</div>
           <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
             Returns and volatility data needed for analysis

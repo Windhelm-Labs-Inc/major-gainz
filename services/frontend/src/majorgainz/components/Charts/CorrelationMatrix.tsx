@@ -23,7 +23,6 @@ const CorrelationMatrix: React.FC<CorrelationMatrixProps> = ({
         }}
       >
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔗</div>
           <div>Insufficient data for correlation analysis</div>
           <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
             At least 2 assets required

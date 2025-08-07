@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import styles from './chat.module.css';
+import ArrowIconUrl from '../../assets/Arrow.svg?url';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -67,18 +68,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           aria-label="Send message"
           type="button"
         >
-          <svg 
-            className={styles.sendIcon}
-            fill="currentColor" 
-            viewBox="0 0 20 20"
-            aria-hidden="true"
-          >
-            <path 
-              fillRule="evenodd" 
-              d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" 
-              clipRule="evenodd" 
-            />
-          </svg>
+          <img src={ArrowIconUrl} alt="Send" className={styles.sendIconImg} />
         </button>
       </div>
     </div>

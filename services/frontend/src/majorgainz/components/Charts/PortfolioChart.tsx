@@ -29,7 +29,6 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
         }}
       >
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>📊</div>
           <div>No portfolio data available</div>
           <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
             Connect a wallet to view your holdings
@@ -96,6 +95,9 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
             size: 12,
           },
           color: 'var(--mg-gray-700)',
+          boxWidth: 12,
+          usePointStyle: true,
+          pointStyle: 'rectRounded' as const,
           generateLabels: (chart: any) => {
             const data = chart.data;
             if (data.labels.length && data.datasets.length) {
@@ -136,7 +138,7 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
         },
       },
     },
-    cutout: '50%',
+    cutout: '56%',
     elements: {
       arc: {
         borderJoinStyle: 'round' as const,
@@ -145,7 +147,8 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
     animation: {
       animateRotate: true,
       animateScale: false,
-      duration: 1000,
+      duration: 900,
+      easing: 'easeOutCubic' as const,
     },
   };
 

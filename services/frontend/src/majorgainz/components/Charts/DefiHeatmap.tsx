@@ -69,7 +69,6 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
         }}
       >
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🗺️</div>
           <div>No DeFi data available</div>
           <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
             DeFi opportunities will appear here
