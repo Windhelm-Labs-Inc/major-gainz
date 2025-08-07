@@ -187,12 +187,12 @@ const MajorGainzPage: React.FC = () => {
         />
 
         {/* Quick Actions */}
-        <QuickActions
+        {/* <QuickActions
           onActionSelect={agent.sendMessage}
           portfolio={portfolio.portfolio || undefined}
           defiData={portfolio.defiData || undefined}
           isLoading={agent.isProcessing || portfolio.isLoading}
-        />
+        /> */}
       </div>
 
       {/* Settings Button */}
