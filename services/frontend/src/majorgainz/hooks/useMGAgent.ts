@@ -115,9 +115,43 @@ export const useMGAgent = (config: AgentConfig = {}) => {
         ? `CONTEXT:\nUser rank: ${config.rankContext.name}\nHBAR holdings: ${Math.floor(config.rankContext.hbarAmount).toLocaleString()} HBAR\nUse rank only for addressing and immersion; never gate capabilities or accuracy.`
         : undefined;
 
+      // Build rich, current context from ChartContext – portfolio, DeFi, returns.
+      const cx = config.context;
+      const lines: string[] = [];
+      if (cx?.userAddress) {
+        lines.push(`User address: ${cx.userAddress}`);
+      }
+      if (cx?.portfolio?.holdings?.length) {
+        const p = cx.portfolio;
+        const summary = p.holdings
+          .slice(0, 20)
+          .map(h => `${h.symbol}\t${h.amount.toFixed(4)}\t$${h.usd.toFixed(2)}\t${h.percent.toFixed(2)}%`)
+          .join('\n');
+        lines.push(
+          `PORTFOLIO (USD terms) – total $${(p.totalUsd || 0).toFixed(2)} across ${p.holdings.length} tokens:\nTOKEN\tAMOUNT\tUSD\t%\n${summary}`
+        );
+      }
+      if (cx?.returnsStats?.length) {
+        const r = cx.returnsStats
+          .map(s => `${s.symbol}: Return ${(s.returns).toFixed(2)}%  Vol ${(s.volatility).toFixed(2)}%`)
+          .join('\n');
+        lines.push(`RETURNS (daily averages):\n${r}`);
+      }
+      if (cx?.defiData) {
+        const d = cx.defiData;
+        lines.push(`DEFI: TVL $${(d.totalValueLocked || 0).toLocaleString()} • Positions ${d.positionCount || 0}`);
+      }
+      // Guide the agent to use inline chart component tags the MG chat will render
+      lines.push(
+        `When a visual would help, include one of these tags (standalone on a line) to request a component:\n` +
+        `- [CHART:portfolio-chart]\n- [CHART:risk-scatter]\n- [CHART:defi-heatmap]\n- [CHART:correlation-matrix]\n- [CHART:token-analysis]`
+      );
+      const contextBlock = lines.length ? `CURRENT CONTEXT\n${lines.join('\n')}` : undefined;
+
       const messages = [
         { role: 'system', content: personality.systemPrompt },
         ...(contextualSystem ? [{ role: 'system', content: contextualSystem }] as any : []),
+        ...(contextBlock ? [{ role: 'system', content: contextBlock }] as any : []),
         { role: 'user', content: message.trim() },
       ];
 
