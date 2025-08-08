@@ -12,6 +12,7 @@ const MGTokenHoldersInteractive = lazy(() => import('./Charts/MGTokenHoldersInte
 interface ChatComponentRegistryProps {
   instruction: ComponentInstruction;
   context?: ChartContext;
+  onTokenSelect?: (symbol: string, amount?: number) => void;
 }
 
 const LoadingFallback: React.FC<{ height?: number }> = ({ height = 400 }) => (
@@ -89,7 +90,8 @@ const ComponentWrapper: React.FC<{
     background: 'var(--mg-white)',
     border: '1px solid var(--mg-gray-200)',
     borderRadius: 'var(--mg-radius-md)',
-    overflow: 'hidden'
+    overflow: 'auto',
+    maxHeight: height ? `${height}px` : undefined
   }}>
     {title && (
       <div style={{
@@ -103,7 +105,7 @@ const ComponentWrapper: React.FC<{
         {title}
       </div>
     )}
-    <div style={{ height: height ? `${height}px` : 'auto' }}>
+    <div style={{ height: height ? `${height - (title ? 48 : 0)}px` : 'auto' }}>
       {children}
     </div>
   </div>
@@ -111,7 +113,8 @@ const ComponentWrapper: React.FC<{
 
 const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
   instruction,
-  context
+  context,
+  onTokenSelect,
 }) => {
   const { type, title, height = 400, props = {} } = instruction;
   // Allow per-component default sizing. Make portfolio chart significantly larger by default.
@@ -135,6 +138,7 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
               <PortfolioChart
                 portfolio={context?.portfolio}
                 height={resolvedHeight}
+                onTokenSelect={onTokenSelect}
                 {...props}
               />
             </Suspense>

@@ -8,11 +8,13 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 interface PortfolioChartProps {
   portfolio?: Portfolio;
   height?: number;
+  onTokenSelect?: (symbol: string, amount?: number) => void;
 }
 
 const PortfolioChart: React.FC<PortfolioChartProps> = ({ 
   portfolio, 
-  height = 400 
+  height = 400,
+  onTokenSelect,
 }) => {
   const chartRef = useRef<ChartJS<'doughnut'>>(null);
 
@@ -204,7 +206,28 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
       </div>
       
       <div style={{ height: `${height - 80}px` }}>
-        <Doughnut ref={chartRef} data={chartData} options={options} />
+        <Doughnut 
+          ref={chartRef} 
+          data={chartData} 
+          options={options as any}
+          onClick={(event: React.MouseEvent<HTMLCanvasElement>) => {
+            const chart = chartRef.current;
+            if (!chart) return;
+            // Use Chart.js API to find the nearest arc element
+            const points = (chart as any).getElementsAtEventForMode(
+              (event as any).nativeEvent,
+              'nearest',
+              { intersect: true },
+              true
+            );
+            if (!points || points.length === 0) return;
+            const idx = (points[0] as any).index as number;
+            const label = chartData.labels?.[idx] as string | undefined;
+            if (!label) return;
+            const holding = portfolio.holdings.find(h => h.symbol === label);
+            onTokenSelect?.(label, holding?.amount);
+          }}
+        />
       </div>
     </div>
   );

@@ -131,6 +131,12 @@ const MajorGainzPage: React.FC = () => {
       <ChatComponentRegistry
         instruction={instruction}
         context={context}
+        onTokenSelect={(symbol, amount) => {
+          // Update scratchpad and prompt holders fetch via agent-tag for MG renderer
+          scratchpad.selectToken({ symbol, tokenId: '', amount: amount || 0, usd: 0, percent: 0 });
+          // In a full implementation, we could auto-issue a holders fetch command
+          // via agent or emit a [CHART:mg-token-holders] depending on UX decision.
+        }}
       />
     );
   };
