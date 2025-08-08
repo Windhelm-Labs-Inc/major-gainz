@@ -351,7 +351,11 @@ async def get_pools_summary(
         # Attach user positions if requested ---------------------------------------
         if account_id:
             service = DeFiProfileService(testnet=testnet)
-            positions = service.get_defi_profile(account_id, include_risk_analysis=False)
+            try:
+                positions = await service.get_defi_profile(account_id, include_risk_analysis=False)
+            finally:
+                if testnet:
+                    service.cleanup()
             summary_data = {**summary_data, "user_positions": positions}
 
         return {

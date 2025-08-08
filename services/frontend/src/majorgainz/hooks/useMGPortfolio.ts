@@ -37,14 +37,31 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
   } = config;
 
   const fetchPortfolioData = useCallback(async () => {
+    // Always fetch global pools summary for opportunities, even without a user address
+    const fetchPoolsSummary = async () => {
+      try {
+        const poolsRes = await fetch(
+          `${apiBaseUrl}/defi/pools/summary?testnet=${network === 'testnet'}`
+        );
+        if (poolsRes.ok) {
+          return await poolsRes.json();
+        }
+      } catch (e) {
+        console.warn('Pools summary fetch failed', e);
+      }
+      return null;
+    };
+
     if (!userAddress) {
+      const poolsSummary = await fetchPoolsSummary();
       setState(prev => ({
         ...prev,
         portfolio: null,
-        defiData: null,
+        defiData: poolsSummary?.pools ? ({ pools: poolsSummary.pools } as any) : null,
         returnsStats: null,
         error: null,
         isLoading: false,
+        lastUpdated: new Date(),
       }));
       return;
     }
@@ -63,14 +80,14 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
 
       const portfolioData = await portfolioResponse.json();
 
-      // Fetch DeFi data
+      // Fetch DeFi data (user positions)
       const defiResponse = await fetch(
         `${apiBaseUrl}/defi/positions/${userAddress}?network=${network}`
       );
       
-      let defiData = null;
+      let defiPositions: any = null;
       if (defiResponse.ok) {
-        defiData = await defiResponse.json();
+        defiPositions = await defiResponse.json();
       }
 
       // Fetch returns statistics
@@ -83,6 +100,9 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
         returnsStats = await returnsResponse.json();
       }
 
+      // Fetch DeFi global pools summary for APY/TVL intel (used by heatmap)
+      const poolsSummary: any = await fetchPoolsSummary();
+
       // Transform portfolio data
       const portfolio: Portfolio = {
         holdings: portfolioData.holdings || [],
@@ -90,11 +110,35 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
         totalUsd: portfolioData.totalUsd || 0,
       };
 
+      // Build fallback returns/volatility if analytics endpoint is unavailable
+      const fallbackReturnsStats = (() => {
+        try {
+          const holdings = (portfolioData.holdings || []) as Array<{ symbol?: string }>;
+          if (!Array.isArray(returnsStats) || returnsStats.length === 0) {
+            return holdings
+              .filter(h => !!h.symbol)
+              .map(h => ({
+                symbol: h.symbol as string,
+                // Use zeros so the chart component's mock generator will provide sensible demo values
+                returns: 0,
+                volatility: 0,
+              }));
+          }
+        } catch {
+          // ignore fallback errors; will use whatever we have
+        }
+        return returnsStats;
+      })();
+
       setState(prev => ({
         ...prev,
         portfolio,
-        defiData,
-        returnsStats,
+        defiData: {
+          ...(defiPositions || {}),
+          // Attach global pools snapshot for heatmap APY/TVL rendering
+          ...(poolsSummary?.pools ? { pools: poolsSummary.pools } : {}),
+        } as any,
+        returnsStats: (fallbackReturnsStats as any) || returnsStats,
         isLoading: false,
         lastUpdated: new Date(),
       }));
