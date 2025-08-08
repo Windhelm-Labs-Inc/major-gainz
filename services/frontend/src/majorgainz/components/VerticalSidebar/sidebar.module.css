@@ -21,13 +21,18 @@
   transition: transform var(--mg-transition);
 
   position: relative;
+
+  /* Control the logo block and camo boundary via CSS variables */
+  --logo-boundary: 22vh;       /* tighter boundary so camo sits closer to text */
+  --logo-top-gap: 1vh;         /* smaller top gap (~1%) */
+  --logo-bottom-gap: 0.5vh;    /* minimal gap between text and camo */
 }
 
 /* Camo band from text boundary to bottom */
 .sidebar::before {
   content: '';
   position: absolute;
-  top: 30vh; /* start at the text boundary */
+  top: var(--logo-boundary); /* start exactly at the text boundary */
   left: 0;
   right: 0;
   bottom: 0; /* extend to bottom */
@@ -47,18 +52,20 @@
 }
 
 .logoContainer {
-  width: 94%; /* shrink to fit in padded border, 3% margin on each side */
-  height: calc(30vh - 6vh); /* shrink height for 3% top/bottom padding */
+  width: 94%; /* 3% horizontal margin on each side */
+  /* Height fills the space up to the camo boundary, minus top/bottom gaps */
+  height: calc(var(--logo-boundary) - (var(--logo-top-gap) + var(--logo-bottom-gap)));
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
   position: relative;
-  margin: 3vh 3%; /* 3% padding/margin on all sides */
+  /* Place logo near the top with ~2% gap; keep side margins at 3% */
+  margin: var(--logo-top-gap) 3% var(--logo-bottom-gap) 3%;
 }
 
 .logo {
-  width: 25vh; /* slightly smaller to ensure it fits */
+  width: 20vh; /* 20% smaller than previous 25vh */
   height: auto;
   max-width: none;
   
@@ -76,17 +83,17 @@
 /* Responsive sizing to ensure good visibility on all screen sizes */
 @media (min-height: 1200px) {
   .logoContainer { height: 25vh; }
-  .logo { width: 22vh; }
+  .logo { width: 17.6vh; } /* 20% smaller than previous 22vh */
 }
 
 @media (max-height: 700px) {
   .logoContainer { height: 35vh; }
-  .logo { width: 28vh; }
+  .logo { width: 22.4vh; } /* 20% smaller than previous 28vh */
 }
 
 @media (max-height: 500px) {
   .logoContainer { height: 40vh; }
-  .logo { width: 32vh; }
+  .logo { width: 25.6vh; } /* 20% smaller than previous 32vh */
 }
 
 /* Mobile: collapsed by default */

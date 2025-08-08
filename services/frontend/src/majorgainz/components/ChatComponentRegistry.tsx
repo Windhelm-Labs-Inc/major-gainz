@@ -8,11 +8,11 @@ const DefiHeatmap = lazy(() => import('./Charts/DefiHeatmap'));
 const CorrelationMatrix = lazy(() => import('./Charts/CorrelationMatrix'));
 const TokenHolderAnalysis = lazy(() => import('./Charts/TokenHolderAnalysis'));
 const MGTokenHoldersInteractive = lazy(() => import('./Charts/MGTokenHoldersInteractive'));
-const CandlestickChart = lazy(() => import('./Charts/CandlestickChart'));
 
 interface ChatComponentRegistryProps {
   instruction: ComponentInstruction;
   context?: ChartContext;
+  onTokenSelect?: (symbol: string, amount?: number) => void;
 }
 
 const LoadingFallback: React.FC<{ height?: number }> = ({ height = 400 }) => (
@@ -90,7 +90,8 @@ const ComponentWrapper: React.FC<{
     background: 'var(--mg-white)',
     border: '1px solid var(--mg-gray-200)',
     borderRadius: 'var(--mg-radius-md)',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    maxHeight: height ? `${height}px` : undefined
   }}>
     {title && (
       <div style={{
@@ -104,7 +105,7 @@ const ComponentWrapper: React.FC<{
         {title}
       </div>
     )}
-    <div style={{ height: height ? `${height}px` : 'auto' }}>
+    <div style={{ height: height ? `${height - (title ? 48 : 0)}px` : 'auto' }}>
       {children}
     </div>
   </div>
@@ -112,7 +113,8 @@ const ComponentWrapper: React.FC<{
 
 const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
   instruction,
-  context
+  context,
+  onTokenSelect,
 }) => {
   const { type, title, height = 400, props = {} } = instruction;
   // Allow per-component default sizing. Make portfolio chart significantly larger by default.
@@ -120,13 +122,11 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
   if (type === 'portfolio-chart' && (typeof height !== 'number' || height < 560)) {
     resolvedHeight = 560;
   }
+  // portfolio-table removed per updated requirements
   if (type === 'defi-heatmap' && (typeof height !== 'number' || height < 600)) {
     resolvedHeight = 700;
   }
   if (type === 'risk-scatter' && (typeof height !== 'number' || height < 420)) {
-    resolvedHeight = 480;
-  }
-  if (type === 'candlestick' && (typeof height !== 'number' || height < 420)) {
     resolvedHeight = 480;
   }
 
@@ -139,10 +139,13 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
               <PortfolioChart
                 portfolio={context?.portfolio}
                 height={resolvedHeight}
+                onTokenSelect={onTokenSelect}
                 {...props}
               />
             </Suspense>
           );
+
+        // portfolio-table intentionally removed
 
         case 'risk-scatter':
           return (
@@ -166,16 +169,6 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
             </Suspense>
           );
 
-        case 'candlestick':
-          return (
-            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
-              <CandlestickChart
-                symbol={props?.symbol || context?.portfolio?.holdings?.[0]?.symbol || 'HBAR'}
-                height={resolvedHeight}
-                {...props}
-              />
-            </Suspense>
-          );
 
         case 'correlation-matrix':
           return (
@@ -192,7 +185,23 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
           return (
             <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <TokenHolderAnalysis
-                tokenData={props.tokenData || context?.portfolio?.holdings?.[0]}
+                tokenData={((): any => {
+                  // Priority: explicit tokenSymbol prop → selectedToken → first holding
+                  const explicit = props.tokenData
+                    || (props.tokenSymbol && context?.portfolio?.holdings?.find(h => h.symbol === props.tokenSymbol))
+                    || context?.selectedToken
+                    || context?.portfolio?.holdings?.[0];
+
+                  if (explicit) return explicit;
+
+                  // If a tokenSymbol was provided but not found in holdings, construct minimal tokenData
+                  if (props.tokenSymbol && typeof props.tokenSymbol === 'string') {
+                    return { symbol: props.tokenSymbol, tokenId: props.tokenSymbol, amount: 0, usd: 0, percent: 0 };
+                  }
+                  return undefined;
+                })()}
+                userAddress={context?.userAddress}
+                onAddressClick={props.onAddressClick}
                 height={resolvedHeight}
                 {...props}
               />

@@ -85,6 +85,14 @@ def get_token_id_for_symbol(symbol: str) -> str:
     # If not found, raise KeyError with helpful message
     raise KeyError(f"Token symbol '{symbol}' not found in supported tokens: {list(SYMBOL_TO_TOKEN_ID.keys())}")
 
+def is_supported_symbol(symbol: str) -> bool:
+    """Return True if the provided symbol is present in the enabled tokens map (case-insensitive)."""
+    if symbol in SYMBOL_TO_TOKEN_ID:
+        return True
+    if symbol in CASE_INSENSITIVE_SYMBOL_TO_TOKEN_ID:
+        return True
+    return False
+
 # Load decimals
 try:
     with open(TOKEN_DECIMALS_PATH, "r", encoding="utf-8") as _f:

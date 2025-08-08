@@ -37,32 +37,71 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const parseAgentResponse = (response: string): { text: string; components: ComponentInstruction[] } => {
+  const parseAgentResponse = (response: string, userMessageText?: string): { text: string; components: ComponentInstruction[] } => {
     // Simple parser for component instructions
     // Look for patterns like [CHART:portfolio-chart] or [COMPONENT:risk-scatter:above]
-    const componentRegex = /\[(?:CHART|COMPONENT):([^:\]]+)(?::([^:\]]+))?(?::([^:\]]+))?\]/g;
+  // Allow optional second segment for either position (above|inline|below) OR a token symbol (e.g., token-analysis:SAUCE)
+  const componentRegex = /\[(?:CHART|COMPONENT):([^:\]]+)(?::([^:\]]+))?\]/g;
     const components: ComponentInstruction[] = [];
     let cleanText = response;
     let match;
 
+    // Try to infer a token symbol from the conversation if the agent omits it in the tag
+    const inferTokenSymbol = (text: string): string | undefined => {
+      try {
+        const combined = `${text}`;
+        const holdings = context?.portfolio?.holdings || [];
+        const knownSymbols = Array.from(new Set([
+          ...holdings.map(h => h.symbol),
+          'HBAR', 'SAUCE', 'USDC', 'USDT', 'HBTC'
+        ]));
+        let best: { sym: string; idx: number } | null = null;
+        for (const sym of knownSymbols) {
+          const re = new RegExp(`\\b${sym}\\b`, 'i');
+          const m = combined.match(re);
+          if (m && typeof m.index === 'number') {
+            if (!best || m.index < best.idx) best = { sym, idx: m.index };
+          }
+        }
+        return best?.sym;
+      } catch {
+        return undefined;
+      }
+    };
+
     while ((match = componentRegex.exec(response)) !== null) {
-      const [fullMatch, type, arg1, arg2] = match;
-      let position: 'above' | 'inline' | 'below' = 'below';
-      let props: Record<string, any> | undefined;
-      const isPos = (v?: string) => v === 'above' || v === 'inline' || v === 'below';
-      if (isPos(arg1)) position = arg1 as any; else if (arg1) props = { ...(props||{}), symbol: arg1 };
-      if (isPos(arg2)) position = arg2 as any; else if (arg2) props = { ...(props||{}), symbol: arg2 };
+      const [fullMatch, type, maybeParam] = match;
+      // Determine if the param is a position or token symbol
+      const isPosition = /^(above|inline|below)$/i.test(maybeParam || '');
+      const position = (isPosition ? (maybeParam as any) : 'below') as any;
+      const props: Record<string, any> = {};
+      if (maybeParam && !isPosition) {
+        props.tokenSymbol = maybeParam;
+      }
 
       components.push({
         id: `comp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         type: type as any,
-        position,
+        position: position as any,
         height: 400,
-        props
+        props,
       });
       
       // Remove the instruction from the text
       cleanText = cleanText.replace(fullMatch, '');
+    }
+
+    // Post-process components: for token-analysis without explicit symbol, try to infer one
+    if (components.length) {
+      const inferred = inferTokenSymbol(`${response} ${userMessageText || ''}`);
+      components.forEach((c) => {
+        if (c.type === 'token-analysis') {
+          if (!c.props) c.props = {};
+          if (!c.props.tokenSymbol && inferred) {
+            c.props.tokenSymbol = inferred;
+          }
+        }
+      });
     }
 
     return {
@@ -104,7 +143,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
 
       // Parse response for components
-      const { text, components } = parseAgentResponse(response);
+      const { text, components } = parseAgentResponse(response, messageText);
 
       // Replace processing message with actual response
       const agentMessage: ChatMessage = {

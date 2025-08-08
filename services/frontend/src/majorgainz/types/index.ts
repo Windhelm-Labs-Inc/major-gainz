@@ -55,14 +55,14 @@ export type ComponentType =
   | 'defi-heatmap'
   | 'correlation-matrix'
   | 'token-analysis'
-  | 'mg-token-holders'
-  | 'candlestick';
+  | 'mg-token-holders';
 
 export interface ChartContext {
   portfolio?: Portfolio;
   defiData?: DefiData;
   returnsStats?: ReturnsStats[];
   userAddress?: string;
+  selectedToken?: Holding;
   holders?: Holder[];
   percentiles?: Record<string, number>;
   network: 'mainnet' | 'testnet';

@@ -38,6 +38,7 @@ const MajorGainzPage: React.FC = () => {
     defiData: portfolio.defiData || undefined,
     returnsStats: portfolio.returnsStats || undefined,
     userAddress: userAddress || undefined,
+    selectedToken: scratchpad.selectedToken,
     network: 'mainnet',
   };
 
@@ -76,7 +77,7 @@ const MajorGainzPage: React.FC = () => {
         - [CHART:defi-heatmap] for DeFi opportunities
         - [CHART:correlation-matrix] for asset correlations
         - [CHART:token-analysis] for holder distribution
-         - [CHART:candlestick] for token price candles (optionally provide position and symbol, e.g., [CHART:candlestick:above:HBAR])
+         
         
         Always operate on mainnet data only. Never suggest testnet operations.`
     },
@@ -131,6 +132,13 @@ const MajorGainzPage: React.FC = () => {
       <ChatComponentRegistry
         instruction={instruction}
         context={context}
+        onTokenSelect={(symbol, amount) => {
+          // Update scratchpad and prompt holders fetch via agent-tag for MG renderer
+          const found = portfolio.getHoldingBySymbol(symbol) || { symbol, tokenId: '', amount: amount || 0, usd: 0, percent: 0 };
+          scratchpad.selectToken(found);
+          // In a full implementation, we could auto-issue a holders fetch command
+          // via agent or emit a [CHART:mg-token-holders] depending on UX decision.
+        }}
       />
     );
   };
@@ -232,7 +240,7 @@ const MajorGainzPage: React.FC = () => {
           e.currentTarget.style.background = 'var(--mg-white)';
         }}
       >
-        MIISION PARAMETERS
+        MISSION PARAMETERS
       </button>
 
       {/* Settings Drawer */}
