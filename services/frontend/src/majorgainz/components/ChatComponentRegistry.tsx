@@ -90,7 +90,7 @@ const ComponentWrapper: React.FC<{
     background: 'var(--mg-white)',
     border: '1px solid var(--mg-gray-200)',
     borderRadius: 'var(--mg-radius-md)',
-    overflow: 'auto',
+    overflow: 'hidden',
     maxHeight: height ? `${height}px` : undefined
   }}>
     {title && (
@@ -122,6 +122,7 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
   if (type === 'portfolio-chart' && (typeof height !== 'number' || height < 560)) {
     resolvedHeight = 560;
   }
+  // portfolio-table removed per updated requirements
   if (type === 'defi-heatmap' && (typeof height !== 'number' || height < 600)) {
     resolvedHeight = 700;
   }
@@ -143,6 +144,8 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
               />
             </Suspense>
           );
+
+        // portfolio-table intentionally removed
 
         case 'risk-scatter':
           return (
@@ -182,7 +185,23 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
           return (
             <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <TokenHolderAnalysis
-                tokenData={props.tokenData || context?.portfolio?.holdings?.[0]}
+                tokenData={((): any => {
+                  // Priority: explicit tokenSymbol prop → selectedToken → first holding
+                  const explicit = props.tokenData
+                    || (props.tokenSymbol && context?.portfolio?.holdings?.find(h => h.symbol === props.tokenSymbol))
+                    || context?.selectedToken
+                    || context?.portfolio?.holdings?.[0];
+
+                  if (explicit) return explicit;
+
+                  // If a tokenSymbol was provided but not found in holdings, construct minimal tokenData
+                  if (props.tokenSymbol && typeof props.tokenSymbol === 'string') {
+                    return { symbol: props.tokenSymbol, tokenId: props.tokenSymbol, amount: 0, usd: 0, percent: 0 };
+                  }
+                  return undefined;
+                })()}
+                userAddress={context?.userAddress}
+                onAddressClick={props.onAddressClick}
                 height={resolvedHeight}
                 {...props}
               />

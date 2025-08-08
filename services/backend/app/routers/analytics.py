@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from math import sqrt
 import asyncio
 
-from ..settings import logger, get_token_id_for_symbol
+from ..settings import logger, get_token_id_for_symbol, is_supported_symbol
 from ..routers.portfolio import get_portfolio
 from ..services.saucerswap_ohlcv import SaucerSwapOHLCVService
 
@@ -39,6 +39,10 @@ async def get_returns_stats(
 
         async def fetch_series(symbol: str) -> Dict[str, Any] | None:
             try:
+                # Skip LP or unsupported symbols early
+                if not is_supported_symbol(symbol):
+                    logger.debug(f"Skipping unsupported symbol for returns analytics: {symbol}")
+                    return None
                 token_id = get_token_id_for_symbol(symbol)
                 raw = await service.fetch_ohlcv_data(token_id=token_id, days=days, interval="DAY")
                 # Expect list of dicts with numeric 'close'

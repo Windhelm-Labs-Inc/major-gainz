@@ -353,7 +353,7 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
   return (
     <div style={{ height: `${height}px`, padding: '16px', overflow: 'hidden' }}>
       {sectionHeader('Current DeFi Positions', 'Aggregated by platform and category from your live positions')}
-      <div style={{ height: `${sectionHeight}px`, overflowY: 'auto', marginBottom: '12px' }}>
+      <div style={{ height: `${sectionHeight}px`, overflowY: 'auto', marginBottom: '12px', paddingRight: '8px' }}>
         {positionCells.length ? renderGrid(positionCells) : (
           <div style={{ color: 'var(--mg-gray-600)', fontSize: '0.875rem', textAlign: 'center', padding: '12px' }}>
             No current DeFi positions detected
@@ -362,7 +362,7 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
       </div>
 
       {sectionHeader('DeFi Opportunities', 'Top 30 APY opportunities across Hedera DeFi protocols')}
-      <div style={{ height: `${sectionHeight}px`, overflowY: 'auto' }}>
+      <div style={{ height: `${sectionHeight}px`, overflowY: 'auto', paddingRight: '8px' }}>
         {opportunityCells.length ? renderGrid(opportunityCells) : (
           <div style={{ color: 'var(--mg-gray-600)', fontSize: '0.875rem', textAlign: 'center', padding: '12px' }}>
             No global opportunities available

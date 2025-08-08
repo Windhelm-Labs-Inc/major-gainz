@@ -91,7 +91,7 @@ function App() {
       </div>
       
       {/* Navigation toggle for Major Gainz */}
-      {currentPage === 'major-gainz' && (
+      {/* {currentPage === 'major-gainz' && (
         <button
           style={{
             position: 'fixed',
@@ -121,7 +121,7 @@ function App() {
         >
           ☰ Menu
         </button>
-      )}
+      )} */}
     </div>
   )
 }

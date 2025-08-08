@@ -62,6 +62,7 @@ export interface ChartContext {
   defiData?: DefiData;
   returnsStats?: ReturnsStats[];
   userAddress?: string;
+  selectedToken?: Holding;
   holders?: Holder[];
   percentiles?: Record<string, number>;
   network: 'mainnet' | 'testnet';
