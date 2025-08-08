@@ -203,9 +203,9 @@ const MajorGainzPage: React.FC = () => {
           onSendMessage={agent.sendMessage}
           onComponentRender={handleComponentRender}
           isProcessing={agent.isProcessing}
-          quickActions={(
+          quickActions={(send) => (
             <QuickActions
-              onActionSelect={agent.sendMessage}
+              onActionSelect={(prompt) => { void send(prompt); }}
               portfolio={portfolio.portfolio || undefined}
               defiData={portfolio.defiData || undefined}
               isLoading={agent.isProcessing || portfolio.isLoading}

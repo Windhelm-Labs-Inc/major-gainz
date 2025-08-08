@@ -18,6 +18,7 @@ from .database import Base, engine
 from .crud_saucerswap import refresh_all_tokens
 # Import routers including new portfolio, defi, and chat
 from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi, chat, mcp_proxy
+from .routers import holders
 
 Base.metadata.create_all(bind=engine)
 
@@ -46,6 +47,7 @@ app.include_router(token_holdings.router)
 app.include_router(defi.router)
 app.include_router(chat.router)
 app.include_router(mcp_proxy.router)
+app.include_router(holders.router)
 
 # Duplicate routes under /api prefix so that frontend can call relative path `/api/*`
 from fastapi import APIRouter  # type: ignore  # Already imported above but ensures availability
@@ -58,6 +60,7 @@ api_router.include_router(token_holdings.router)
 api_router.include_router(defi.router)
 api_router.include_router(chat.router)
 api_router.include_router(mcp_proxy.router)
+api_router.include_router(holders.router)
 app.include_router(api_router)
 
 # Serve the pre-built frontend bundle (index.html & assets) LAST so API routes take priority

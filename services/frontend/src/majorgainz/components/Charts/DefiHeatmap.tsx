@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DefiData } from '../../types';
 
 interface DefiHeatmapProps {
@@ -18,19 +18,36 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
   defiData, 
   height = 400 
 }) => {
-  // Mock DeFi opportunities data
-  const getMockData = (): HeatmapCell[] => [
-    { platform: 'SaucerSwap', apy: 12.5, tvl: 2500000, risk: 'Low', category: 'DEX' },
-    { platform: 'HeliSwap', apy: 15.2, tvl: 1800000, risk: 'Medium', category: 'DEX' },
-    { platform: 'Bonzo Finance', apy: 8.7, tvl: 800000, risk: 'Low', category: 'Lending' },
-    { platform: 'Pangolin', apy: 22.1, tvl: 450000, risk: 'High', category: 'DEX' },
-    { platform: 'Hashport', apy: 6.2, tvl: 3200000, risk: 'Low', category: 'Bridge' },
-    { platform: 'HSUITE', apy: 18.9, tvl: 720000, risk: 'Medium', category: 'Yield' },
-    { platform: 'Stader', apy: 4.8, tvl: 5600000, risk: 'Low', category: 'Staking' },
-    { platform: 'Yamato', apy: 11.3, tvl: 320000, risk: 'Medium', category: 'Lending' },
-  ];
+  const [cells, setCells] = useState<HeatmapCell[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const data = getMockData();
+  // Transform provided defiData (if any) into heatmap cells. No mock data.
+  useEffect(() => {
+    try {
+      if (!defiData) {
+        setCells([]);
+        return;
+      }
+      const platforms: HeatmapCell[] = [];
+      // Expecting shape similar to PureChat enhanced data: platform sections with positions/APY/TVL.
+      const platformsObj = (defiData as any).platforms || {};
+      Object.entries(platformsObj).forEach(([platformName, platformData]: any) => {
+        const items = Array.isArray(platformData) ? platformData : (platformData?.positions || []);
+        const tvl = Number(platformData?.tvl || 0);
+        const apy = Number(platformData?.apy || 0);
+        const risk: HeatmapCell['risk'] = (platformData?.risk || 'Medium').toString() as any;
+        const category = (platformData?.category || 'Unknown').toString();
+        if (!isNaN(apy) && !isNaN(tvl)) {
+          platforms.push({ platform: platformName, apy, tvl, risk, category });
+        }
+      });
+      setCells(platforms);
+      setError(null);
+    } catch (e: any) {
+      setCells([]);
+      setError('Failed to load DeFi opportunities');
+    }
+  }, [defiData]);
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
@@ -42,7 +59,7 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
   };
 
   const getApyIntensity = (apy: number) => {
-    const maxApy = Math.max(...data.map(d => d.apy));
+    const maxApy = Math.max(0, ...cells.map(d => d.apy));
     const intensity = apy / maxApy;
     return `rgba(37, 99, 235, ${0.1 + intensity * 0.8})`;
   };
@@ -56,7 +73,29 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
     return `$${tvl}`;
   };
 
-  if (!data.length) {
+  if (!!error) {
+    return (
+      <div
+        style={{
+          height: `${height}px`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--mg-gray-600)',
+          fontSize: '0.875rem'
+        }}
+      >
+        <div style={{ textAlign: 'center' }}>
+          <div>DeFi opportunities unavailable</div>
+          <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+            {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!cells.length) {
     return (
       <div
         style={{
@@ -71,7 +110,7 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
         <div style={{ textAlign: 'center' }}>
           <div>No DeFi data available</div>
           <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-            DeFi opportunities will appear here
+            Connect to live DeFi endpoints to populate this chart
           </div>
         </div>
       </div>
@@ -108,7 +147,7 @@ const DefiHeatmap: React.FC<DefiHeatmapProps> = ({
         height: `${height - 80}px`,
         overflowY: 'auto'
       }}>
-        {data.map((cell, index) => (
+        {cells.map((cell, index) => (
           <div
             key={index}
             style={{

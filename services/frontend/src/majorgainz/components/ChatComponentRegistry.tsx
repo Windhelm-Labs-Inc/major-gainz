@@ -7,6 +7,7 @@ const RiskScatter = lazy(() => import('./Charts/RiskScatter'));
 const DefiHeatmap = lazy(() => import('./Charts/DefiHeatmap'));
 const CorrelationMatrix = lazy(() => import('./Charts/CorrelationMatrix'));
 const TokenHolderAnalysis = lazy(() => import('./Charts/TokenHolderAnalysis'));
+const MGTokenHoldersInteractive = lazy(() => import('./Charts/MGTokenHoldersInteractive'));
 
 interface ChatComponentRegistryProps {
   instruction: ComponentInstruction;
@@ -171,6 +172,19 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
             <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <TokenHolderAnalysis
                 tokenData={props.tokenData || context?.portfolio?.holdings?.[0]}
+                height={resolvedHeight}
+                {...props}
+              />
+            </Suspense>
+          );
+
+        case 'mg-token-holders':
+          return (
+            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
+              <MGTokenHoldersInteractive
+                holders={context?.holders}
+                percentiles={context?.percentiles}
+                portfolio={context?.portfolio}
                 height={resolvedHeight}
                 {...props}
               />

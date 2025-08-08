@@ -27,6 +27,68 @@ def validate_account_id(account_id: str) -> str:
     return account_id
 
 
+@router.get("/positions/{account_id}")
+async def get_defi_positions(
+    account_id: str,
+    network: str = Query("mainnet", pattern="^(mainnet|testnet)$"),
+) -> Dict[str, Any]:
+    """Return condensed DeFi positions for `useMGPortfolio` expectations.
+
+    Shape:
+    {
+      totalValueLocked: number,
+      positionCount: number,
+      saucerSwap?: any,
+      bonzoFinance?: any
+    }
+    """
+    account_id = validate_account_id(account_id)
+    testnet = network == "testnet"
+
+    service = DeFiProfileService(testnet=testnet) if testnet else defi_service
+    try:
+        profile = await service.get_defi_profile(
+            account_id=account_id, include_risk_analysis=False
+        )
+    finally:
+        if testnet:
+            service.cleanup()
+
+    saucer = profile.get("saucer_swap") or {}
+    bonzo = profile.get("bonzo_finance") or {}
+
+    def _count_positions() -> int:
+        count = 0
+        for key in ("pools_v1", "pools_v2", "farms", "vaults"):
+            seq = saucer.get(key)
+            if isinstance(seq, list):
+                count += len(seq)
+        for key in ("supplied", "borrowed"):
+            seq = bonzo.get(key)
+            if isinstance(seq, list):
+                count += len(seq)
+        return count
+
+    def _total_value_locked() -> float:
+        total = 0.0
+        for lst in (saucer.get("pools_v1", []), saucer.get("pools_v2", []), saucer.get("farms", []), saucer.get("vaults", [])):
+            for pos in (lst or []):
+                val = pos.get("underlyingValueUSD")
+                if isinstance(val, (int, float)):
+                    total += float(val)
+        for pos in (bonzo.get("supplied") or []):
+            val = pos.get("usd_value") or pos.get("usdValue")
+            if isinstance(val, (int, float)):
+                total += float(val)
+        return total
+
+    return {
+        "totalValueLocked": _total_value_locked(),
+        "positionCount": _count_positions(),
+        "saucerSwap": saucer,
+        "bonzoFinance": bonzo,
+    }
+
 @router.get("/profile/{account_id}")
 async def get_defi_profile(
     account_id: str,
