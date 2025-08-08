@@ -76,7 +76,7 @@ const MajorGainzPage: React.FC = () => {
         - [CHART:defi-heatmap] for DeFi opportunities
         - [CHART:correlation-matrix] for asset correlations
         - [CHART:token-analysis] for holder distribution
-         - [CHART:candlestick] for token price candles (optionally provide position and symbol, e.g., [CHART:candlestick:above:HBAR])
+         
         
         Always operate on mainnet data only. Never suggest testnet operations.`
     },
