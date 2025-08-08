@@ -7,21 +7,35 @@
   bottom: 0;
   width: var(--mg-sidebar-width);
   z-index: var(--mg-z-sidebar);
-  
-  /* Camo background */
-  background-image: url('../../assets/dollar_camo.gif');
-  background-size: 200px auto;
-  background-repeat: repeat-y;
-  background-position: center;
-  
+
+  /* Base background (off‑white) */
+  background: var(--mg-bg);
+
   /* Layout */
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
   padding-top: 16px;
-  
+
   /* Smooth transitions */
   transition: transform var(--mg-transition);
+
+  position: relative;
+}
+
+/* Top camo banner only (hard cutoff at 30vh) */
+.sidebar::before {
+  content: '';
+  position: absolute;
+  top: 30vh; /* start at the text boundary */
+  left: 0;
+  right: 0;
+  bottom: 0; /* extend to bottom */
+  background-image: url('../../assets/dollar_camo.gif');
+  background-size: 200px auto; /* do not stretch */
+  background-repeat: repeat-y;
+  background-position: center;
+  pointer-events: none;
 }
 
 .logoContainer {

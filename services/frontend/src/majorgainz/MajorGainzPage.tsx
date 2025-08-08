@@ -229,7 +229,7 @@ const MajorGainzPage: React.FC = () => {
           e.currentTarget.style.background = 'var(--mg-white)';
         }}
       >
-        ⚙️
+        MIISION PARAMETERS
       </button>
 
       {/* Settings Drawer */}
@@ -240,9 +240,6 @@ const MajorGainzPage: React.FC = () => {
         onAddressChange={handleAddressChange}
         balanceUsd={portfolio.getTotalValue()}
         isConnecting={portfolio.isLoading}
-        connectedWallet={connectedWallet}
-        onWalletConnect={handleWalletConnect}
-        onWalletDisconnect={handleWalletDisconnect}
       />
 
       {/* Target Overlay */}
