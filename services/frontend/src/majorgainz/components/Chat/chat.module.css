@@ -49,7 +49,7 @@
 }
 
 .messageContent {
-  max-width: 70%;
+  max-width: 80%; /* widen so user messages don't feel squished */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -135,12 +135,24 @@
   align-self: flex-end;
   border: 2px solid var(--mg-white);
   box-shadow: var(--mg-shadow);
+  background: transparent; /* remove solid background for agent avatar */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .avatarImage {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.userRankImage {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
 }
 
 /* Timestamp */
@@ -278,7 +290,7 @@
 
 /* Constrain bubble itself inside a container so charts can be full width */
 .bubbleContainer {
-  max-width: 70%;
+  max-width: 100%; /* remove extra constraint to avoid squish */
 }
 
 /* Mobile responsive */
@@ -290,10 +302,10 @@
   }
   
   .messageContent {
-    max-width: 85%;
+    max-width: 90%;
   }
   .bubbleContainer {
-    max-width: 85%;
+    max-width: 100%;
   }
   
   .inputArea {

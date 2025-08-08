@@ -75,14 +75,13 @@
   width: 32px;
   height: 32px;
   
-  /* Badge styling (lighter for visibility) */
-  background: var(--mg-blue-700);
+  /* Transparent background for rank insignia */
+  background: transparent;
   border-radius: var(--mg-radius-full);
-  color: var(--mg-white);
   
-  /* Shadow for depth */
-  box-shadow: var(--mg-shadow-sm);
-  border: 2px solid var(--mg-gray-200);
+  /* Remove extra chrome */
+  box-shadow: none;
+  border: none;
 }
 
 .rankIcon img {

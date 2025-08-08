@@ -38,9 +38,26 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
     );
   }
 
-  // Generate a high-contrast palette for the chart
+  // Resolve CSS variable (e.g., var(--mg-blue-900)) to its computed HEX/RGB value.
+  const resolveCssVar = (value: string): string => {
+    if (!value.startsWith('var(')) {
+      return value; // already a valid color string
+    }
+    // Guard for non-browser environments (e.g., SSR)
+    if (typeof window === 'undefined' || !document?.documentElement) {
+      return value;
+    }
+    const cssVar = value.match(/var\((--[^)]+)\)/);
+    if (cssVar?.[1]) {
+      const computed = getComputedStyle(document.documentElement).getPropertyValue(cssVar[1]).trim();
+      return computed || value; // fallback to original if not found
+    }
+    return value;
+  };
+
+  // Generate a high-contrast palette for the chart – brand colours first
   const generateColors = (count: number) => {
-    // Curated, high-contrast palette (brand-first, then accessible extras)
+    // Curated palette using CSS vars so theme tweaks auto-propagate
     const baseColors = [
       'var(--mg-blue-900)',   // deep navy
       'var(--mg-mint-500)',   // mint
@@ -58,13 +75,15 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
 
     const colors: string[] = [];
     for (let i = 0; i < count; i++) {
+      let rawColor: string;
       if (i < baseColors.length) {
-        colors.push(baseColors[i]);
+        rawColor = baseColors[i];
       } else {
         // Fallback: generate additional distinct hues
         const hue = (i * 137.508) % 360; // Golden angle approximation
-        colors.push(`hsl(${hue}, 70%, 45%)`);
+        rawColor = `hsl(${hue}, 70%, 45%)`;
       }
+      colors.push(resolveCssVar(rawColor));
     }
     return colors;
   };

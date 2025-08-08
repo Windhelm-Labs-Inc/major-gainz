@@ -7,6 +7,7 @@ import 'katex/dist/katex.min.css';
 import { ChatMessage, ComponentInstruction, ChartContext } from '../../types';
 import styles from './chat.module.css';
 import Avatar from './Avatar';
+import { useMGRank } from '../../hooks/useMGRank';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -26,6 +27,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       hour12: false 
     });
   };
+
+  // Derive rank insignia from current portfolio context for user messages
+  const rankInfo = useMGRank(context?.portfolio || null);
 
   const renderComponents = (position: 'above' | 'inline' | 'below') => {
     if (!message.components || !onComponentRender) return null;
@@ -52,8 +56,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div className={messageClass}>
+      {/* Agent avatar on the left */}
       {message.sender === 'agent' && <Avatar sender={message.sender} />}
-      
+
       <div className={styles.messageContent}>
         {/* Components positioned above (full-width) */}
         {renderComponents('above')}
@@ -152,6 +157,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           {formatTime(message.timestamp)}
         </div>
       </div>
+
+      {/* User rank insignia avatar on the right */}
+      {message.sender === 'user' && (
+        <Avatar sender="user" rankIconUrl={rankInfo.iconUrl} />
+      )}
     </div>
   );
 };
