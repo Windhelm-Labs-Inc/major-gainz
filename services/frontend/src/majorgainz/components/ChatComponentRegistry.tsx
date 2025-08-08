@@ -8,6 +8,7 @@ const DefiHeatmap = lazy(() => import('./Charts/DefiHeatmap'));
 const CorrelationMatrix = lazy(() => import('./Charts/CorrelationMatrix'));
 const TokenHolderAnalysis = lazy(() => import('./Charts/TokenHolderAnalysis'));
 const MGTokenHoldersInteractive = lazy(() => import('./Charts/MGTokenHoldersInteractive'));
+const CandlestickChart = lazy(() => import('./Charts/CandlestickChart'));
 
 interface ChatComponentRegistryProps {
   instruction: ComponentInstruction;
@@ -119,6 +120,15 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
   if (type === 'portfolio-chart' && (typeof height !== 'number' || height < 560)) {
     resolvedHeight = 560;
   }
+  if (type === 'defi-heatmap' && (typeof height !== 'number' || height < 600)) {
+    resolvedHeight = 700;
+  }
+  if (type === 'risk-scatter' && (typeof height !== 'number' || height < 420)) {
+    resolvedHeight = 480;
+  }
+  if (type === 'candlestick' && (typeof height !== 'number' || height < 420)) {
+    resolvedHeight = 480;
+  }
 
   const renderComponent = () => {
     try {
@@ -150,6 +160,17 @@ const ChatComponentRegistry: React.FC<ChatComponentRegistryProps> = ({
             <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
               <DefiHeatmap
                 defiData={context?.defiData}
+                height={resolvedHeight}
+                {...props}
+              />
+            </Suspense>
+          );
+
+        case 'candlestick':
+          return (
+            <Suspense fallback={<LoadingFallback height={resolvedHeight} />}>
+              <CandlestickChart
+                symbol={props?.symbol || context?.portfolio?.holdings?.[0]?.symbol || 'HBAR'}
                 height={resolvedHeight}
                 {...props}
               />

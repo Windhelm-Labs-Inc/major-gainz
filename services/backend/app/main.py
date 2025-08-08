@@ -17,7 +17,7 @@ print("=" * 50)
 from .database import Base, engine
 from .crud_saucerswap import refresh_all_tokens
 # Import routers including new portfolio, defi, and chat
-from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi, chat, mcp_proxy
+from .routers import tokens, ohlcv, maintenance, portfolio, token_holdings, defi, chat, mcp_proxy, analytics
 from .routers import holders
 
 Base.metadata.create_all(bind=engine)
@@ -58,6 +58,7 @@ api_router.include_router(maintenance.router)
 api_router.include_router(portfolio.router)
 api_router.include_router(token_holdings.router)
 api_router.include_router(defi.router)
+api_router.include_router(analytics.router)
 api_router.include_router(chat.router)
 api_router.include_router(mcp_proxy.router)
 api_router.include_router(holders.router)

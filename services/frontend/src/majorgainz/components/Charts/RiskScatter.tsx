@@ -44,17 +44,8 @@ const RiskScatter: React.FC<RiskScatterProps> = ({
     );
   }
 
-  // Generate mock risk/return data if needed
-  const generateMockData = () => {
-    return returnsStats.map(stat => ({
-      ...stat,
-      returns: stat.returns || (Math.random() - 0.5) * 50, // -25% to 25%
-      volatility: stat.volatility || Math.random() * 80 + 10, // 10% to 90%
-      sharpe: stat.sharpe || (Math.random() - 0.3) * 2, // -0.6 to 1.4
-    }));
-  };
-
-  const data = generateMockData();
+  // Use real returns/volatility as provided
+  const data = returnsStats;
 
   // Color points based on Sharpe ratio
   const getPointColor = (sharpe: number) => {

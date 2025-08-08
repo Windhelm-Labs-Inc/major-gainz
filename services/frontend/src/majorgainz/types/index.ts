@@ -55,7 +55,8 @@ export type ComponentType =
   | 'defi-heatmap'
   | 'correlation-matrix'
   | 'token-analysis'
-  | 'mg-token-holders';
+  | 'mg-token-holders'
+  | 'candlestick';
 
 export interface ChartContext {
   portfolio?: Portfolio;

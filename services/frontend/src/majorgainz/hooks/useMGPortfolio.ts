@@ -90,7 +90,7 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
         defiPositions = await defiResponse.json();
       }
 
-      // Fetch returns statistics
+      // Fetch returns statistics (real analytics)
       const returnsResponse = await fetch(
         `${apiBaseUrl}/analytics/returns/${userAddress}?network=${network}`
       );
@@ -110,26 +110,6 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
         totalUsd: portfolioData.totalUsd || 0,
       };
 
-      // Build fallback returns/volatility if analytics endpoint is unavailable
-      const fallbackReturnsStats = (() => {
-        try {
-          const holdings = (portfolioData.holdings || []) as Array<{ symbol?: string }>;
-          if (!Array.isArray(returnsStats) || returnsStats.length === 0) {
-            return holdings
-              .filter(h => !!h.symbol)
-              .map(h => ({
-                symbol: h.symbol as string,
-                // Use zeros so the chart component's mock generator will provide sensible demo values
-                returns: 0,
-                volatility: 0,
-              }));
-          }
-        } catch {
-          // ignore fallback errors; will use whatever we have
-        }
-        return returnsStats;
-      })();
-
       setState(prev => ({
         ...prev,
         portfolio,
@@ -138,7 +118,7 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
           // Attach global pools snapshot for heatmap APY/TVL rendering
           ...(poolsSummary?.pools ? { pools: poolsSummary.pools } : {}),
         } as any,
-        returnsStats: (fallbackReturnsStats as any) || returnsStats,
+        returnsStats: returnsStats as any,
         isLoading: false,
         lastUpdated: new Date(),
       }));
