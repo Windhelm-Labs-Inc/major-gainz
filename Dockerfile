@@ -75,7 +75,7 @@ COPY services/backend/static/token_holdings/src ./services/backend/static/token_
 COPY --from=frontend-builder /frontend/dist ./services/frontend/dist
 
 # --- SQLite databases --------------------------------------------------------
-COPY services/backend/ohlcv.db ./services/backend/ohlcv.db
+# COPY services/backend/ohlcv.db ./services/backend/ohlcv.db
 COPY services/backend/tokens_enabled.json ./services/backend/tokens_enabled.json
 COPY services/backend/static/token_holdings/token_holdings.db ./services/backend/static/token_holdings/token_holdings.db
 

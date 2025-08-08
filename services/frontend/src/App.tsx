@@ -5,21 +5,21 @@ import { useState, useEffect } from 'react'
 import Navigation from './components/Navigation'
 import QuickOriginsPage from './pages/QuickOriginsPage'
 import PureChatPage from './pages/PureChatPage'
-import MajorGainzPage from './pages/MajorGainzPage'
+import MajorGainzPage from './majorgainz/MajorGainzPage'
 import './App.css'
 
 type PageType = 'major-gainz' | 'pure-chat' | 'quick-origins'
 
 function App() {
   // Page navigation state
-  const [currentPage, setCurrentPage] = useState<PageType>('pure-chat') // Default to Pure-Chat as specified
+  const [currentPage, setCurrentPage] = useState<PageType>('major-gainz') // Default to Major Gainz
 
   // Handle page changes with browser history integration
   const handlePageChange = (page: PageType) => {
     setCurrentPage(page)
     // Update browser history
     const pageUrls = {
-      'major-gainz': '/major-gainz',
+      'major-gainz': '/',
       'pure-chat': '/pure-chat', 
       'quick-origins': '/quick-origins'
     }
@@ -34,12 +34,12 @@ function App() {
       } else {
         // Default fallback based on current URL
         const path = window.location.pathname
-        if (path.includes('major-gainz')) {
-          setCurrentPage('major-gainz')
+        if (path.includes('pure-chat')) {
+          setCurrentPage('pure-chat')
         } else if (path.includes('quick-origins')) {
           setCurrentPage('quick-origins')
         } else {
-          setCurrentPage('pure-chat')
+          setCurrentPage('major-gainz')
         }
       }
     }
@@ -51,10 +51,10 @@ function App() {
   // Initialize with current URL on first load
   useEffect(() => {
     const path = window.location.pathname
-    let initialPage: PageType = 'pure-chat' // default
+    let initialPage: PageType = 'major-gainz' // default
     
-    if (path.includes('major-gainz')) {
-      initialPage = 'major-gainz'
+    if (path.includes('pure-chat')) {
+      initialPage = 'pure-chat'
     } else if (path.includes('quick-origins')) {
       initialPage = 'quick-origins'
     }
@@ -74,19 +74,54 @@ function App() {
       case 'quick-origins':
         return <QuickOriginsPage />
       default:
-        return <PureChatPage />
+        return <MajorGainzPage />
     }
   }
 
   return (
     <div style={{ minHeight: '100vh', width: '100%' }}>
-      {/* Navigation Bar */}
-      <Navigation currentPage={currentPage} onPageChange={handlePageChange} />
+      {/* Navigation Bar - hidden for Major Gainz fullscreen experience */}
+      {currentPage !== 'major-gainz' && (
+        <Navigation currentPage={currentPage} onPageChange={handlePageChange} />
+      )}
       
       {/* Page Content */}
-      <div style={{ paddingTop: '60px' }}> {/* Add padding to account for fixed navigation */}
+      <div style={{ paddingTop: currentPage !== 'major-gainz' ? '60px' : '0' }}>
         {renderCurrentPage()}
       </div>
+      
+      {/* Navigation toggle for Major Gainz */}
+      {currentPage === 'major-gainz' && (
+        <button
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '20px',
+            zIndex: 25,
+            background: 'var(--mg-white)',
+            border: '2px solid var(--mg-gray-300)',
+            borderRadius: 'var(--mg-radius)',
+            padding: '8px 12px',
+            cursor: 'pointer',
+            boxShadow: 'var(--mg-shadow)',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            color: 'var(--mg-gray-700)',
+            transition: 'all var(--mg-transition)',
+          }}
+          onClick={() => handlePageChange('pure-chat')}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'var(--mg-mint-500)';
+            e.currentTarget.style.background = 'var(--mg-mint-100)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'var(--mg-gray-300)';
+            e.currentTarget.style.background = 'var(--mg-white)';
+          }}
+        >
+          ☰ Menu
+        </button>
+      )}
     </div>
   )
 }
