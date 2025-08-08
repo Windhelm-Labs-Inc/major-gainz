@@ -262,6 +262,8 @@
   border-radius: var(--mg-radius-md);
   overflow: hidden;
   border: 1px solid var(--mg-gray-200);
+  width: 100%;
+  align-self: stretch; /* escape the 70% bubble width */
 }
 
 .componentError {
@@ -274,6 +276,11 @@
   font-size: 0.875rem;
 }
 
+/* Constrain bubble itself inside a container so charts can be full width */
+.bubbleContainer {
+  max-width: 70%;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .messagesContainer {
@@ -283,6 +290,9 @@
   }
   
   .messageContent {
+    max-width: 85%;
+  }
+  .bubbleContainer {
     max-width: 85%;
   }
   

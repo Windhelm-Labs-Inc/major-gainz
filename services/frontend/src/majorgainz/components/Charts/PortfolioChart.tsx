@@ -38,26 +38,32 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
     );
   }
 
-  // Generate colors for the chart
+  // Generate a high-contrast palette for the chart
   const generateColors = (count: number) => {
+    // Curated, high-contrast palette (brand-first, then accessible extras)
     const baseColors = [
-      'var(--mg-blue-900)',
-      'var(--mg-mint-500)',
-      'var(--mg-blue-700)',
-      'var(--mg-mint-300)',
-      'var(--mg-blue-500)',
-      'var(--mg-gray-600)',
-      'var(--mg-gray-400)',
+      'var(--mg-blue-900)',   // deep navy
+      'var(--mg-mint-500)',   // mint
+      'var(--mg-blue-700)',   // strong blue
+      'var(--mg-mint-300)',   // light mint
+      'var(--mg-blue-500)',   // medium blue
+      '#0ea5e9',              // sky
+      '#22c55e',              // green
+      '#f59e0b',              // amber
+      '#ef4444',              // red
+      '#a855f7',              // purple
+      '#fb7185',              // rose
+      '#14b8a6',              // teal
     ];
-    
-    const colors = [];
+
+    const colors: string[] = [];
     for (let i = 0; i < count; i++) {
       if (i < baseColors.length) {
         colors.push(baseColors[i]);
       } else {
-        // Generate additional colors
+        // Fallback: generate additional distinct hues
         const hue = (i * 137.508) % 360; // Golden angle approximation
-        colors.push(`hsl(${hue}, 70%, 50%)`);
+        colors.push(`hsl(${hue}, 70%, 45%)`);
       }
     }
     return colors;
@@ -75,10 +81,12 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
       {
         data: sortedHoldings.map(h => h.usd),
         backgroundColor: colors,
-        borderColor: 'var(--mg-white)',
-        borderWidth: 2,
-        hoverBackgroundColor: colors.map(color => color + 'CC'),
+        borderColor: 'var(--mg-bg)', // off-white to clearly separate slices on light UI
+        borderWidth: 3,
+        hoverBorderColor: 'var(--mg-bg)',
         hoverBorderWidth: 3,
+        // Do not attempt to derive hoverBackgroundColor from CSS vars; keep default for reliability
+        hoverOffset: 6,
       },
     ],
   };
@@ -94,7 +102,7 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
             family: 'var(--mg-font-family)',
             size: 12,
           },
-          color: 'var(--mg-gray-700)',
+          color: 'var(--mg-gray-900)', // stronger contrast for legend text
           boxWidth: 12,
           usePointStyle: true,
           pointStyle: 'rectRounded' as const,

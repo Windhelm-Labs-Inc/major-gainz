@@ -50,108 +50,101 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     styles[message.sender]
   ].filter(Boolean).join(' ');
 
-  const customMarkdownComponents = {
-    // Enhanced code blocks
-    code: ({ children, className, inline, ...props }: any) => {
-      const isCodeBlock = !inline && className;
-      return isCodeBlock ? (
-        <pre style={{ 
-          background: '#f8f9fa', 
-          padding: '12px', 
-          borderRadius: '6px',
-          overflow: 'auto',
-          fontSize: '0.875rem'
-        }}>
-          <code className={className} {...props}>
-            {children}
-          </code>
-        </pre>
-      ) : (
-        <code style={{ 
-          background: '#f1f3f4', 
-          padding: '2px 4px', 
-          borderRadius: '3px',
-          fontSize: '0.875rem'
-        }} {...props}>
-          {children}
-        </code>
-      );
-    },
-
-    // Enhanced tables
-    table: ({ children, ...props }: any) => (
-      <div style={{ overflowX: 'auto', margin: '8px 0' }}>
-        <table style={{ 
-          width: '100%', 
-          borderCollapse: 'collapse',
-          fontSize: '0.875rem'
-        }} {...props}>
-          {children}
-        </table>
-      </div>
-    ),
-
-    th: ({ children, ...props }: any) => (
-      <th style={{ 
-        padding: '8px', 
-        borderBottom: '2px solid #dee2e6',
-        textAlign: 'left',
-        fontWeight: '600'
-      }} {...props}>
-        {children}
-      </th>
-    ),
-
-    td: ({ children, ...props }: any) => (
-      <td style={{ 
-        padding: '8px', 
-        borderBottom: '1px solid #dee2e6'
-      }} {...props}>
-        {children}
-      </td>
-    ),
-
-    // Enhanced links
-    a: ({ children, href, ...props }: any) => (
-      <a 
-        href={href}
-        target={href?.startsWith('http') ? '_blank' : undefined}
-        rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-        style={{ color: 'var(--mg-blue-500)', textDecoration: 'underline' }}
-        {...props}
-      >
-        {children}
-      </a>
-    ),
-  };
-
   return (
     <div className={messageClass}>
       {message.sender === 'agent' && <Avatar sender={message.sender} />}
       
       <div className={styles.messageContent}>
-        {/* Components positioned above */}
+        {/* Components positioned above (full-width) */}
         {renderComponents('above')}
         
-        {/* Main message bubble */}
-        <div className={bubbleClass}>
-          {message.isProcessing ? (
-            <span>
-              {message.text}
-              <span className={styles.processingDots}>...</span>
-            </span>
-          ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm as any, remarkMath as any]}
-              rehypePlugins={[rehypeKatex as any]}
-              components={customMarkdownComponents}
-            >
-              {message.text}
-            </ReactMarkdown>
-          )}
+        {/* Main message bubble constrained to readable width */}
+        <div className={styles.bubbleContainer}>
+          <div className={bubbleClass}>
+            {message.isProcessing ? (
+              <span>
+                {message.text}
+                <span className={styles.processingDots}>...</span>
+              </span>
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm as any, remarkMath as any]}
+                rehypePlugins={[rehypeKatex as any]}
+                components={{
+                  code: ({ children, className, inline, ...props }: any) => {
+                    const isCodeBlock = !inline && className;
+                    return isCodeBlock ? (
+                      <pre style={{ 
+                        background: '#f8f9fa', 
+                        padding: '12px', 
+                        borderRadius: '6px',
+                        overflow: 'auto',
+                        fontSize: '0.875rem'
+                      }}>
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      </pre>
+                    ) : (
+                      <code style={{ 
+                        background: '#f1f3f4', 
+                        padding: '2px 4px', 
+                        borderRadius: '3px',
+                        fontSize: '0.875rem'
+                      }} {...props}>
+                        {children}
+                      </code>
+                    );
+                  },
+                  table: ({ children, ...props }: any) => (
+                    <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+                      <table style={{ 
+                        width: '100%', 
+                        borderCollapse: 'collapse',
+                        fontSize: '0.875rem'
+                      }} {...props}>
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  th: ({ children, ...props }: any) => (
+                    <th style={{ 
+                      padding: '8px', 
+                      borderBottom: '2px solid #dee2e6',
+                      textAlign: 'left',
+                      fontWeight: '600'
+                    }} {...props}>
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children, ...props }: any) => (
+                    <td style={{ 
+                      padding: '8px', 
+                      borderBottom: '1px solid #dee2e6'
+                    }} {...props}>
+                      {children}
+                    </td>
+                  ),
+                  a: ({ children, href, ...props }: any) => (
+                    <a 
+                      href={href}
+                      target={href?.startsWith('http') ? '_blank' : undefined}
+                      rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
+                      style={{ color: 'var(--mg-blue-500)', textDecoration: 'underline' }}
+                      {...props}
+                    >
+                      {children}
+                    </a>
+                  ),
+                }}
+              >
+                {message.text}
+              </ReactMarkdown>
+            )}
+          </div>
         </div>
         
-        {/* Components positioned below */}
+        {/* Components positioned below (full-width) */}
         {renderComponents('below')}
         
         {/* Timestamp */}
