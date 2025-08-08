@@ -100,9 +100,9 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
       {
         data: sortedHoldings.map(h => h.usd),
         backgroundColor: colors,
-        borderColor: 'var(--mg-bg)', // off-white to clearly separate slices on light UI
+        borderColor: resolveCssVar('var(--mg-bg)'), // resolve CSS var for canvas
         borderWidth: 3,
-        hoverBorderColor: 'var(--mg-bg)',
+        hoverBorderColor: resolveCssVar('var(--mg-bg)'),
         hoverBorderWidth: 3,
         // Do not attempt to derive hoverBackgroundColor from CSS vars; keep default for reliability
         hoverOffset: 6,
@@ -121,7 +121,7 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
             family: 'var(--mg-font-family)',
             size: 12,
           },
-          color: 'var(--mg-gray-900)', // stronger contrast for legend text
+          color: resolveCssVar('var(--mg-gray-900)'),
           boxWidth: 12,
           usePointStyle: true,
           pointStyle: 'rectRounded' as const,
@@ -145,10 +145,10 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
         },
       },
       tooltip: {
-        backgroundColor: 'var(--mg-white)',
-        titleColor: 'var(--mg-gray-900)',
-        bodyColor: 'var(--mg-gray-700)',
-        borderColor: 'var(--mg-gray-300)',
+        backgroundColor: resolveCssVar('var(--mg-white)'),
+        titleColor: resolveCssVar('var(--mg-gray-900)'),
+        bodyColor: resolveCssVar('var(--mg-gray-700)'),
+        borderColor: resolveCssVar('var(--mg-gray-300)'),
         borderWidth: 1,
         cornerRadius: 6,
         displayColors: true,
