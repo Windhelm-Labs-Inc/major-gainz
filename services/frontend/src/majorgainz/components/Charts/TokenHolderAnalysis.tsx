@@ -54,7 +54,8 @@ const TokenHolderAnalysis: React.FC<TokenHolderAnalysisProps> = ({
 
   const bars = useMemo(() => {
     if (!percentiles || !tokenData) return [] as Array<{ label: string; value: number; isUser?: boolean }>;
-    const order = ['p10','p25','p50','p75','p90','p95','p99'];
+    // Show highest thresholds first (p99 → p10)
+    const order = ['p99','p95','p90','p75','p50','p25','p10'];
     return order.map(k => ({ label: k.toUpperCase(), value: (percentiles as any)[k] || 0 }));
   }, [percentiles, tokenData]);
 
