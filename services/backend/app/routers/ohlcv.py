@@ -8,6 +8,8 @@ from ..database import get_db
 from .. import schemas, settings
 from .. import crud_saucerswap as crud
 from ..settings import get_token_id_for_symbol
+from ..services.saucerswap_ohlcv import SaucerSwapOHLCVService
+from ..settings import get_token_id_for_symbol
 from ..settings import logger
 import numpy as np
 
@@ -23,16 +25,21 @@ def _validate_token(token: str):
         raise HTTPException(status_code=404, detail="Token not supported")
 
 
-@router.get("/{token}", response_model=List[schemas.OHLCVSchema])
+@router.get("/{token}")
 async def read_ohlcv(
     token: str,
-    start: Optional[date] = None,
-    end: Optional[date] = None,
-    limit: int = 100,
-    db: Session = Depends(get_db),
+    days: int = 90,
+    interval: str = "DAY",
 ):
+    """Return OHLCV candles from SaucerSwap for the given token symbol.
+
+    Response fields follow SaucerSwap format with numeric values: timestamp, open, high, low, close, volume.
+    """
     token = _validate_token(token)
-    return crud.get_ohlcv(db, token, start, end, limit)
+    token_id = get_token_id_for_symbol(token)
+    svc = SaucerSwapOHLCVService()
+    data = await svc.fetch_ohlcv_data(token_id, days=days, interval=interval)
+    return data
 
 
 @router.get("/{token}/latest", response_model=schemas.OHLCVSchema)

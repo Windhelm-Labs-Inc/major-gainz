@@ -63,19 +63,20 @@ const MajorGainzPage: React.FC = () => {
         - Always stay professional and helpful
         - Focus on actionable insights
         
-        Your capabilities:
+         Your capabilities:
         - Portfolio analysis and allocation recommendations
         - Risk assessment and correlation analysis  
         - DeFi opportunity identification
         - Token holder analysis
         - Market intelligence on Hedera ecosystem
         
-        When suggesting charts or visualizations, use these formats:
+         When suggesting charts or visualizations, use these formats:
         - [CHART:portfolio-chart] for portfolio allocation
         - [CHART:risk-scatter] for risk/return analysis
         - [CHART:defi-heatmap] for DeFi opportunities
         - [CHART:correlation-matrix] for asset correlations
         - [CHART:token-analysis] for holder distribution
+         - [CHART:candlestick] for token price candles (optionally provide position and symbol, e.g., [CHART:candlestick:above:HBAR])
         
         Always operate on mainnet data only. Never suggest testnet operations.`
     },
@@ -162,16 +163,18 @@ const MajorGainzPage: React.FC = () => {
     zIndex: 25,
     background: 'var(--mg-white)',
     border: '2px solid var(--mg-gray-300)',
-    borderRadius: 'var(--mg-radius-full)',
-    width: '44px',
-    height: '44px',
+    borderRadius: 'var(--mg-radius-pill)',
+    padding: '12px 16px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
     boxShadow: 'var(--mg-shadow)',
     transition: 'all var(--mg-transition)',
-    fontSize: '18px',
+    fontSize: '12px',
+    fontWeight: '600',
+    whiteSpace: 'nowrap',
+    minHeight: '44px',
   };
 
   return (
@@ -201,9 +204,9 @@ const MajorGainzPage: React.FC = () => {
           onSendMessage={agent.sendMessage}
           onComponentRender={handleComponentRender}
           isProcessing={agent.isProcessing}
-          quickActions={(
+          quickActions={(send) => (
             <QuickActions
-              onActionSelect={agent.sendMessage}
+              onActionSelect={(prompt) => { void send(prompt); }}
               portfolio={portfolio.portfolio || undefined}
               defiData={portfolio.defiData || undefined}
               isLoading={agent.isProcessing || portfolio.isLoading}
@@ -229,7 +232,7 @@ const MajorGainzPage: React.FC = () => {
           e.currentTarget.style.background = 'var(--mg-white)';
         }}
       >
-        ⚙️
+        MIISION PARAMETERS
       </button>
 
       {/* Settings Drawer */}
@@ -240,9 +243,6 @@ const MajorGainzPage: React.FC = () => {
         onAddressChange={handleAddressChange}
         balanceUsd={portfolio.getTotalValue()}
         isConnecting={portfolio.isLoading}
-        connectedWallet={connectedWallet}
-        onWalletConnect={handleWalletConnect}
-        onWalletDisconnect={handleWalletDisconnect}
       />
 
       {/* Target Overlay */}

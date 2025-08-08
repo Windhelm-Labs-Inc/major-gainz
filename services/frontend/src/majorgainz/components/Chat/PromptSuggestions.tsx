@@ -79,19 +79,21 @@ const PromptSuggestions: React.FC<PromptSuggestionsProps> = ({
             background: 'var(--mg-mint-500)',
             color: 'var(--mg-white)',
             border: 'none',
-            borderRadius: 'var(--mg-radius-full)',
-            width: '48px',
-            height: '48px',
+            borderRadius: 'var(--mg-radius-pill)',
+            padding: '10px 14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
             boxShadow: 'var(--mg-shadow-lg)',
-            transition: 'all var(--mg-transition)'
+            transition: 'all var(--mg-transition)',
+            fontSize: '12px',
+            fontWeight: 600,
+            whiteSpace: 'nowrap'
           }}
-          aria-label="Show prompt suggestions"
+          aria-label="Show Mission Context Assist"
         >
-          +
+          Mission Context Assist
         </button>
       </div>
     );

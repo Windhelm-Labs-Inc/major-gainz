@@ -13,7 +13,7 @@
   align-items: center;
   
   /* Spacing */
-  padding: 12px 20px;
+  padding: 16px 24px; /* Increased bezel height so contents never clip */
   
   /* Background blur effect */
   backdrop-filter: blur(6px);
@@ -31,12 +31,12 @@
   
   /* Pill styling */
   background: var(--mg-white);
-  border: 1px solid var(--mg-gray-300);
+  border: 1px solid rgba(0,0,0,0.08);
   border-radius: var(--mg-radius-pill);
-  padding: 8px 16px;
+  padding: 10px 20px; /* Slightly larger pill for better legibility */
   
   /* Shadow for depth */
-  box-shadow: var(--mg-shadow-md);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
   
   /* Glassmorphism effect */
   backdrop-filter: blur(4px);
@@ -62,7 +62,7 @@
   letter-spacing: 0.025em;
   
   /* Truncate long addresses */
-  max-width: 120px;
+  max-width: 200px; /* Allow space for "Connect Wallet" without truncation */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -75,14 +75,13 @@
   width: 32px;
   height: 32px;
   
-  /* Badge styling */
-  background: var(--mg-blue-900);
+  /* Transparent background for rank insignia */
+  background: transparent;
   border-radius: var(--mg-radius-full);
-  color: var(--mg-white);
   
-  /* Shadow for depth */
-  box-shadow: var(--mg-shadow-sm);
-  border: 2px solid var(--mg-white);
+  /* Remove extra chrome */
+  box-shadow: none;
+  border: none;
 }
 
 .rankIcon img {
@@ -117,22 +116,22 @@
 /* Mobile responsive */
 @media (max-width: 768px) {
   .headerBadge {
-    padding: 8px 16px;
+    padding: 12px 16px;
   }
   
   .badge {
     gap: 8px;
-    padding: 6px 12px;
+    padding: 8px 14px;
   }
   
   .walletAddress {
-    max-width: 100px;
+    max-width: 140px;
     font-size: 0.75rem;
   }
   
   .balance {
     font-size: 0.75rem;
-    min-width: 60px;
+    min-width: 70px;
   }
   
   .rankIcon { width: 28px; height: 28px; }
@@ -141,7 +140,7 @@
 
 @media (max-width: 480px) {
   .walletAddress {
-    max-width: 80px;
+    max-width: 110px;
   }
   
   .balance {

@@ -29,7 +29,6 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
         }}
       >
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>📊</div>
           <div>No portfolio data available</div>
           <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
             Connect a wallet to view your holdings
@@ -39,27 +38,52 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
     );
   }
 
-  // Generate colors for the chart
+  // Resolve CSS variable (e.g., var(--mg-blue-900)) to its computed HEX/RGB value.
+  const resolveCssVar = (value: string): string => {
+    if (!value.startsWith('var(')) {
+      return value; // already a valid color string
+    }
+    // Guard for non-browser environments (e.g., SSR)
+    if (typeof window === 'undefined' || !document?.documentElement) {
+      return value;
+    }
+    const cssVar = value.match(/var\((--[^)]+)\)/);
+    if (cssVar?.[1]) {
+      const computed = getComputedStyle(document.documentElement).getPropertyValue(cssVar[1]).trim();
+      return computed || value; // fallback to original if not found
+    }
+    return value;
+  };
+
+  // Generate a high-contrast palette for the chart – brand colours first
   const generateColors = (count: number) => {
+    // Curated palette using CSS vars so theme tweaks auto-propagate
     const baseColors = [
-      'var(--mg-blue-900)',
-      'var(--mg-mint-500)',
-      'var(--mg-blue-700)',
-      'var(--mg-mint-300)',
-      'var(--mg-blue-500)',
-      'var(--mg-gray-600)',
-      'var(--mg-gray-400)',
+      'var(--mg-blue-900)',   // deep navy
+      'var(--mg-mint-500)',   // mint
+      'var(--mg-blue-700)',   // strong blue
+      'var(--mg-mint-300)',   // light mint
+      'var(--mg-blue-500)',   // medium blue
+      '#0ea5e9',              // sky
+      '#22c55e',              // green
+      '#f59e0b',              // amber
+      '#ef4444',              // red
+      '#a855f7',              // purple
+      '#fb7185',              // rose
+      '#14b8a6',              // teal
     ];
-    
-    const colors = [];
+
+    const colors: string[] = [];
     for (let i = 0; i < count; i++) {
+      let rawColor: string;
       if (i < baseColors.length) {
-        colors.push(baseColors[i]);
+        rawColor = baseColors[i];
       } else {
-        // Generate additional colors
+        // Fallback: generate additional distinct hues
         const hue = (i * 137.508) % 360; // Golden angle approximation
-        colors.push(`hsl(${hue}, 70%, 50%)`);
+        rawColor = `hsl(${hue}, 70%, 45%)`;
       }
+      colors.push(resolveCssVar(rawColor));
     }
     return colors;
   };
@@ -76,10 +100,12 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
       {
         data: sortedHoldings.map(h => h.usd),
         backgroundColor: colors,
-        borderColor: 'var(--mg-white)',
-        borderWidth: 2,
-        hoverBackgroundColor: colors.map(color => color + 'CC'),
+        borderColor: 'var(--mg-bg)', // off-white to clearly separate slices on light UI
+        borderWidth: 3,
+        hoverBorderColor: 'var(--mg-bg)',
         hoverBorderWidth: 3,
+        // Do not attempt to derive hoverBackgroundColor from CSS vars; keep default for reliability
+        hoverOffset: 6,
       },
     ],
   };
@@ -95,7 +121,10 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
             family: 'var(--mg-font-family)',
             size: 12,
           },
-          color: 'var(--mg-gray-700)',
+          color: 'var(--mg-gray-900)', // stronger contrast for legend text
+          boxWidth: 12,
+          usePointStyle: true,
+          pointStyle: 'rectRounded' as const,
           generateLabels: (chart: any) => {
             const data = chart.data;
             if (data.labels.length && data.datasets.length) {
@@ -136,7 +165,7 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
         },
       },
     },
-    cutout: '50%',
+    cutout: '56%',
     elements: {
       arc: {
         borderJoinStyle: 'round' as const,
@@ -145,7 +174,8 @@ const PortfolioChart: React.FC<PortfolioChartProps> = ({
     animation: {
       animateRotate: true,
       animateScale: false,
-      duration: 1000,
+      duration: 900,
+      easing: 'easeOutCubic' as const,
     },
   };
 

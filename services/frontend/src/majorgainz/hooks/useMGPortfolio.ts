@@ -37,14 +37,31 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
   } = config;
 
   const fetchPortfolioData = useCallback(async () => {
+    // Always fetch global pools summary for opportunities, even without a user address
+    const fetchPoolsSummary = async () => {
+      try {
+        const poolsRes = await fetch(
+          `${apiBaseUrl}/defi/pools/summary?testnet=${network === 'testnet'}`
+        );
+        if (poolsRes.ok) {
+          return await poolsRes.json();
+        }
+      } catch (e) {
+        console.warn('Pools summary fetch failed', e);
+      }
+      return null;
+    };
+
     if (!userAddress) {
+      const poolsSummary = await fetchPoolsSummary();
       setState(prev => ({
         ...prev,
         portfolio: null,
-        defiData: null,
+        defiData: poolsSummary?.pools ? ({ pools: poolsSummary.pools } as any) : null,
         returnsStats: null,
         error: null,
         isLoading: false,
+        lastUpdated: new Date(),
       }));
       return;
     }
@@ -63,17 +80,17 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
 
       const portfolioData = await portfolioResponse.json();
 
-      // Fetch DeFi data
+      // Fetch DeFi data (user positions)
       const defiResponse = await fetch(
         `${apiBaseUrl}/defi/positions/${userAddress}?network=${network}`
       );
       
-      let defiData = null;
+      let defiPositions: any = null;
       if (defiResponse.ok) {
-        defiData = await defiResponse.json();
+        defiPositions = await defiResponse.json();
       }
 
-      // Fetch returns statistics
+      // Fetch returns statistics (real analytics)
       const returnsResponse = await fetch(
         `${apiBaseUrl}/analytics/returns/${userAddress}?network=${network}`
       );
@@ -82,6 +99,9 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
       if (returnsResponse.ok) {
         returnsStats = await returnsResponse.json();
       }
+
+      // Fetch DeFi global pools summary for APY/TVL intel (used by heatmap)
+      const poolsSummary: any = await fetchPoolsSummary();
 
       // Transform portfolio data
       const portfolio: Portfolio = {
@@ -93,8 +113,12 @@ export const useMGPortfolio = (config: PortfolioConfig) => {
       setState(prev => ({
         ...prev,
         portfolio,
-        defiData,
-        returnsStats,
+        defiData: {
+          ...(defiPositions || {}),
+          // Attach global pools snapshot for heatmap APY/TVL rendering
+          ...(poolsSummary?.pools ? { pools: poolsSummary.pools } : {}),
+        } as any,
+        returnsStats: returnsStats as any,
         isLoading: false,
         lastUpdated: new Date(),
       }));

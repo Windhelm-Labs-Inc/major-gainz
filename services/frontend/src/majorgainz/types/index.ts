@@ -54,14 +54,18 @@ export type ComponentType =
   | 'risk-scatter'
   | 'defi-heatmap'
   | 'correlation-matrix'
-  | 'token-analysis';
+  | 'token-analysis'
+  | 'mg-token-holders'
+  | 'candlestick';
 
 export interface ChartContext {
   portfolio?: Portfolio;
   defiData?: DefiData;
   returnsStats?: ReturnsStats[];
   userAddress?: string;
-  network: 'mainnet';
+  holders?: Holder[];
+  percentiles?: Record<string, number>;
+  network: 'mainnet' | 'testnet';
 }
 
 export interface MGPersonality {
@@ -75,7 +79,7 @@ export interface MGPersonality {
 export interface ScratchpadContext {
   userContext?: {
     address: string;
-    network: 'mainnet';
+    network: 'mainnet' | 'testnet';
     connectionType: string;
   };
   portfolioSummary?: string;
@@ -84,7 +88,7 @@ export interface ScratchpadContext {
   holderAnalysis?: any;
 }
 
-export type HederaNetwork = 'mainnet';
+export type HederaNetwork = 'mainnet' | 'testnet';
 
 // Error types
 export interface MGError {
@@ -92,3 +96,6 @@ export interface MGError {
   code?: string;
   details?: any;
 }
+
+// New types for holders
+export type Holder = { address: string; amount: number; usd?: number };

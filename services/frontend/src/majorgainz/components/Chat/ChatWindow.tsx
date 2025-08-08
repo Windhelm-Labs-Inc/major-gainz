@@ -10,7 +10,7 @@ interface ChatWindowProps {
   onSendMessage?: (message: string) => Promise<string>;
   onComponentRender?: (instruction: ComponentInstruction) => React.ReactNode;
   isProcessing?: boolean;
-  quickActions?: React.ReactNode;
+  quickActions?: (send: (message: string) => void, isProcessing: boolean) => React.ReactNode;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -40,19 +40,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const parseAgentResponse = (response: string): { text: string; components: ComponentInstruction[] } => {
     // Simple parser for component instructions
     // Look for patterns like [CHART:portfolio-chart] or [COMPONENT:risk-scatter:above]
-    const componentRegex = /\[(?:CHART|COMPONENT):([^:\]]+)(?::([^:\]]+))?\]/g;
+    const componentRegex = /\[(?:CHART|COMPONENT):([^:\]]+)(?::([^:\]]+))?(?::([^:\]]+))?\]/g;
     const components: ComponentInstruction[] = [];
     let cleanText = response;
     let match;
 
     while ((match = componentRegex.exec(response)) !== null) {
-      const [fullMatch, type, position = 'below'] = match;
-      
+      const [fullMatch, type, arg1, arg2] = match;
+      let position: 'above' | 'inline' | 'below' = 'below';
+      let props: Record<string, any> | undefined;
+      const isPos = (v?: string) => v === 'above' || v === 'inline' || v === 'below';
+      if (isPos(arg1)) position = arg1 as any; else if (arg1) props = { ...(props||{}), symbol: arg1 };
+      if (isPos(arg2)) position = arg2 as any; else if (arg2) props = { ...(props||{}), symbol: arg2 };
+
       components.push({
         id: `comp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         type: type as any,
-        position: position as any,
-        height: 400
+        position,
+        height: 400,
+        props
       });
       
       // Remove the instruction from the text
@@ -153,7 +159,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       {/* Chat Input */}
       {quickActions && (
         <div style={{ padding: '8px 20px', marginTop: '-8px' }}>
-          {quickActions}
+          {quickActions((text: string) => { void handleSendMessage(text); }, isProcessing)}
         </div>
       )}
 

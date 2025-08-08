@@ -5,6 +5,19 @@
   flex-direction: column;
   height: 100%;
   background: var(--mg-bg);
+  position: relative;
+}
+
+/* Subtle mint glow along the left edge where content meets the sidebar */
+.chatWindow::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px; /* sit just under border */
+  width: 6px;
+  background: linear-gradient(to right, rgba(66, 227, 193, 0.12), rgba(66, 227, 193, 0));
+  pointer-events: none;
 }
 
 .messagesContainer {
@@ -36,7 +49,7 @@
 }
 
 .messageContent {
-  max-width: 70%;
+  max-width: 80%; /* widen so user messages don't feel squished */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -69,13 +82,14 @@
 .bubble.user {
   background: var(--mg-blue-900);
   color: var(--mg-white);
+  border: 2px solid var(--mg-blue-900);
   border-bottom-right-radius: var(--mg-radius-sm);
 }
 
 .bubble.agent {
   background: var(--mg-white);
   color: var(--mg-gray-900);
-  border: 1px solid var(--mg-gray-300);
+  border: 2px solid var(--mg-gray-300);
   border-bottom-left-radius: var(--mg-radius-sm);
 }
 
@@ -91,24 +105,24 @@
 .bubble.user::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  right: -8px;
+  bottom: -2px;
+  right: -10px;
   width: 0;
   height: 0;
-  border-left: 8px solid var(--mg-blue-900);
-  border-bottom: 8px solid transparent;
+  border-left: 10px solid var(--mg-blue-900);
+  border-bottom: 10px solid transparent;
 }
 
 .bubble.agent::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  left: -8px;
+  bottom: -2px;
+  left: -10px;
   width: 0;
   height: 0;
-  border-right: 8px solid var(--mg-white);
-  border-bottom: 8px solid transparent;
-  border-top: 1px solid var(--mg-gray-300);
+  border-right: 10px solid var(--mg-white);
+  border-bottom: 10px solid transparent;
+  border-top: 2px solid var(--mg-gray-300);
 }
 
 /* Avatar */
@@ -121,12 +135,24 @@
   align-self: flex-end;
   border: 2px solid var(--mg-white);
   box-shadow: var(--mg-shadow);
+  background: transparent; /* remove solid background for agent avatar */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .avatarImage {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.userRankImage {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
 }
 
 /* Timestamp */
@@ -226,6 +252,12 @@
   transform: rotate(90deg);
 }
 
+.sendIconImg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
 /* Processing indicator */
 .processing {
   opacity: 0.7;
@@ -242,6 +274,8 @@
   border-radius: var(--mg-radius-md);
   overflow: hidden;
   border: 1px solid var(--mg-gray-200);
+  width: 100%;
+  align-self: stretch; /* escape the 70% bubble width */
 }
 
 .componentError {
@@ -254,6 +288,11 @@
   font-size: 0.875rem;
 }
 
+/* Constrain bubble itself inside a container so charts can be full width */
+.bubbleContainer {
+  max-width: 100%; /* remove extra constraint to avoid squish */
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .messagesContainer {
@@ -263,7 +302,10 @@
   }
   
   .messageContent {
-    max-width: 85%;
+    max-width: 90%;
+  }
+  .bubbleContainer {
+    max-width: 100%;
   }
   
   .inputArea {
