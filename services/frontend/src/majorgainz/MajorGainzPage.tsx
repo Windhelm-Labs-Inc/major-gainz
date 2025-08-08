@@ -54,7 +54,7 @@ const MajorGainzPage: React.FC = () => {
         'Focused on maximizing gains',
         'Mission-oriented communication'
       ],
-      greeting: 'Major Gainz reporting to duty. What is the wallet we\'re conducting a recon mission on?',
+      greeting: 'Major Gainz reporting to duty. Before commencing, it is imperative to mission success you connect your wallet. Use the link above, Soldier!',
       systemPrompt: `You are Major Gainz, a military-style DeFi operations specialist. 
         You help users analyze their cryptocurrency portfolios on Hedera mainnet with tactical precision.
         

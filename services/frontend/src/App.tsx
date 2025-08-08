@@ -4,11 +4,10 @@ declare const __HEDERA_NETWORK__: string
 import { useState, useEffect } from 'react'
 import Navigation from './components/Navigation'
 import QuickOriginsPage from './pages/QuickOriginsPage'
-import PureChatPage from './pages/PureChatPage'
 import MajorGainzPage from './majorgainz/MajorGainzPage'
 import './App.css'
 
-type PageType = 'major-gainz' | 'pure-chat' | 'quick-origins'
+type PageType = 'major-gainz' | 'quick-origins'
 
 function App() {
   // Page navigation state
@@ -20,7 +19,6 @@ function App() {
     // Update browser history
     const pageUrls = {
       'major-gainz': '/',
-      'pure-chat': '/pure-chat', 
       'quick-origins': '/quick-origins'
     }
     window.history.pushState({ page }, '', pageUrls[page])
@@ -34,9 +32,7 @@ function App() {
       } else {
         // Default fallback based on current URL
         const path = window.location.pathname
-        if (path.includes('pure-chat')) {
-          setCurrentPage('pure-chat')
-        } else if (path.includes('quick-origins')) {
+        if (path.includes('quick-origins')) {
           setCurrentPage('quick-origins')
         } else {
           setCurrentPage('major-gainz')
@@ -52,10 +48,8 @@ function App() {
   useEffect(() => {
     const path = window.location.pathname
     let initialPage: PageType = 'major-gainz' // default
-    
-    if (path.includes('pure-chat')) {
-      initialPage = 'pure-chat'
-    } else if (path.includes('quick-origins')) {
+
+    if (path.includes('quick-origins')) {
       initialPage = 'quick-origins'
     }
     
@@ -69,8 +63,6 @@ function App() {
     switch (currentPage) {
       case 'major-gainz':
         return <MajorGainzPage />
-      case 'pure-chat':
-        return <PureChatPage />
       case 'quick-origins':
         return <QuickOriginsPage />
       default:

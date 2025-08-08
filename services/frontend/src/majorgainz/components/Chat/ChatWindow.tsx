@@ -23,7 +23,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: 'Major Gainz reporting to duty. What is the wallet we\'re conducting a recon mission on?',
+      text: 'Major Gainz reporting to duty. Before commencing, it is imperative to mission success you connect your wallet. Use the link above, Soldier!',
       sender: 'agent',
       timestamp: new Date(),
     },
