@@ -162,16 +162,18 @@ const MajorGainzPage: React.FC = () => {
     zIndex: 25,
     background: 'var(--mg-white)',
     border: '2px solid var(--mg-gray-300)',
-    borderRadius: 'var(--mg-radius-full)',
-    width: '44px',
-    height: '44px',
+    borderRadius: 'var(--mg-radius-pill)',
+    padding: '12px 16px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
     boxShadow: 'var(--mg-shadow)',
     transition: 'all var(--mg-transition)',
-    fontSize: '18px',
+    fontSize: '12px',
+    fontWeight: '600',
+    whiteSpace: 'nowrap',
+    minHeight: '44px',
   };
 
   return (

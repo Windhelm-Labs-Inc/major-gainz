@@ -31,12 +31,12 @@
   
   /* Pill styling */
   background: var(--mg-white);
-  border: 1px solid var(--mg-gray-300);
+  border: 1px solid rgba(0,0,0,0.08);
   border-radius: var(--mg-radius-pill);
   padding: 8px 16px;
   
   /* Shadow for depth */
-  box-shadow: var(--mg-shadow-md);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
   
   /* Glassmorphism effect */
   backdrop-filter: blur(4px);
@@ -75,14 +75,14 @@
   width: 32px;
   height: 32px;
   
-  /* Badge styling */
-  background: var(--mg-blue-900);
+  /* Badge styling (lighter for visibility) */
+  background: var(--mg-blue-700);
   border-radius: var(--mg-radius-full);
   color: var(--mg-white);
   
   /* Shadow for depth */
   box-shadow: var(--mg-shadow-sm);
-  border: 2px solid var(--mg-white);
+  border: 2px solid var(--mg-gray-200);
 }
 
 .rankIcon img {
