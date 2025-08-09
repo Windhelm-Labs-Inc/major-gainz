@@ -9,6 +9,9 @@ AI-assisted portfolio intelligence for the Hedera network. This doc is a practic
 - Agent Support: Small RAG+MCP server used via backend `/mcp/*` proxy
 - Token Holdings: CLI-driven SQLite system that ingests holder data and powers holders APIs
 
+
+<img width="900" height="848" alt="image" src="https://github.com/user-attachments/assets/f311a518-8bb2-4004-a920-c9b37225a848" />
+
 Run targets (common):
 
 Don't use make dev, stick to containers.  
