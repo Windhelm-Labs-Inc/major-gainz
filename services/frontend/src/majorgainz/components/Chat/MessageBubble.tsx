@@ -1,13 +1,28 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
 import { ChatMessage, ComponentInstruction, ChartContext } from '../../types';
 import styles from './chat.module.css';
 import Avatar from './Avatar';
 import { useMGRank } from '../../hooks/useMGRank';
+
+// Simple error boundary to prevent markdown render crashes from breaking the chat
+class MarkdownErrorBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch() {
+    // no-op: we just render fallback
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children as React.ReactElement;
+  }
+}
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -54,6 +69,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     styles[message.sender]
   ].filter(Boolean).join(' ');
 
+  // Math rendering disabled globally per request; only GitHub-flavored markdown remains
+  const remarkPluginsToUse: any[] = [remarkGfm as any];
+  const rehypePluginsToUse: any[] = [];
+  const messageText = message.text ?? '';
+
   return (
     <div className={messageClass}>
       {/* Agent avatar on the left */}
@@ -68,14 +88,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           <div className={bubbleClass}>
             {message.isProcessing ? (
               <span>
-                {message.text}
+                {messageText}
                 <span className={styles.processingDots}>...</span>
               </span>
             ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm as any, remarkMath as any]}
-                rehypePlugins={[rehypeKatex as any]}
-                components={{
+              <MarkdownErrorBoundary fallback={<span>{messageText}</span>}>
+                <ReactMarkdown
+                  remarkPlugins={remarkPluginsToUse}
+                  rehypePlugins={rehypePluginsToUse}
+                  components={{
                   code: ({ children, className, inline, ...props }: any) => {
                     const isCodeBlock = !inline && className;
                     return isCodeBlock ? (
@@ -142,9 +163,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                     </a>
                   ),
                 }}
-              >
-                {message.text}
-              </ReactMarkdown>
+                >
+                  {messageText}
+                </ReactMarkdown>
+              </MarkdownErrorBoundary>
             )}
           </div>
         </div>
