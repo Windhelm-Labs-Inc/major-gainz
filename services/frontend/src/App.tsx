@@ -2,12 +2,10 @@
 declare const __WALLETCONNECT_PROJECT_ID__: string
 declare const __HEDERA_NETWORK__: string
 import { useState, useEffect } from 'react'
-import Navigation from './components/Navigation'
-import QuickOriginsPage from './pages/QuickOriginsPage'
 import MajorGainzPage from './majorgainz/MajorGainzPage'
 import './App.css'
 
-type PageType = 'major-gainz' | 'quick-origins'
+type PageType = 'major-gainz'
 
 function App() {
   // Page navigation state
@@ -19,7 +17,6 @@ function App() {
     // Update browser history
     const pageUrls = {
       'major-gainz': '/',
-      'quick-origins': '/quick-origins'
     }
     window.history.pushState({ page }, '', pageUrls[page])
   }
@@ -32,9 +29,7 @@ function App() {
       } else {
         // Default fallback based on current URL
         const path = window.location.pathname
-        if (path.includes('quick-origins')) {
-          setCurrentPage('quick-origins')
-        } else {
+        {
           setCurrentPage('major-gainz')
         }
       }
@@ -48,10 +43,6 @@ function App() {
   useEffect(() => {
     const path = window.location.pathname
     let initialPage: PageType = 'major-gainz' // default
-
-    if (path.includes('quick-origins')) {
-      initialPage = 'quick-origins'
-    }
     
     if (initialPage !== currentPage) {
       setCurrentPage(initialPage)
@@ -63,8 +54,6 @@ function App() {
     switch (currentPage) {
       case 'major-gainz':
         return <MajorGainzPage />
-      case 'quick-origins':
-        return <QuickOriginsPage />
       default:
         return <MajorGainzPage />
     }
@@ -72,11 +61,6 @@ function App() {
 
   return (
     <div style={{ minHeight: '100vh', width: '100%' }}>
-      {/* Navigation Bar - hidden for Major Gainz fullscreen experience */}
-      {currentPage !== 'major-gainz' && (
-        <Navigation currentPage={currentPage} onPageChange={handlePageChange} />
-      )}
-      
       {/* Page Content */}
       <div style={{ paddingTop: currentPage !== 'major-gainz' ? '60px' : '0' }}>
         {renderCurrentPage()}
