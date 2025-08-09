@@ -1,169 +1,197 @@
-# Quick Origins POC
+# Major Gainz – Technical Walkthrough
 
-> **⚠️ PROOF OF CONCEPT - For Demo and Dev only**  
-> This is a proof-of-concept application for demonstration and development purposes only. Do not use in production environments.
+AI-assisted portfolio intelligence for the Hedera network. This doc is a practical, end-to-end guide to features, APIs, services, and how they fit together.
 
-> **📍 UPCOMING CHANGES**  
-> We have tickets planned to migrate the backend pricing database from CoinGecko to SaucerSwap for improved Hedera-native pricing data.
+## At a glance
 
-This repository contains a proof-of-concept for an AI-powered portfolio intelligence tool for the Hedera Network. It combines wallet connectivity, portfolio analysis, DeFi position tracking, and an AI assistant to provide users with comprehensive insights into their token holdings and DeFi activities.
+- Frontend: React + Vite app (port 8080) with lazy-loaded charts and a chat UI that renders components on demand
+- Backend: FastAPI (port 8000) with routes for portfolio, DeFi, OHLCV, analytics, holders, OpenAI proxy, and MCP proxy
+- Agent Support: Small RAG+MCP server used via backend `/mcp/*` proxy
+- Token Holdings: CLI-driven SQLite system that ingests holder data and powers holders APIs
 
-## Quick Start
+Run targets (common):
 
-### Prerequisites
+Don't use make dev, stick to containers.  
+make docker-compose-local if you place a env file. 
+make docker-compose-dev if you will be injecting them through a secret manager or similar. 
 
-1. **OpenAI API Key**: Sign up at [https://openai.com/api/](https://openai.com/api/) and get an API key
-2. **WalletConnect Project ID**: Create a free project at [https://cloud.walletconnect.com/](https://cloud.walletconnect.com/)
-3. **SaucerSwap API Key**: Get from [https://docs.saucerswap.finance/](https://docs.saucerswap.finance/) for enhanced DeFi data
-
-### Environment Setup
-
-1. Copy the environment template:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit `.env` with your API keys:
-   ```bash
-   # Required API keys
-   OPENAI_API_KEY=your-openai-api-key
-   SAUCER_SWAP_API_KEY=your-saucerswap-api-key
-   VITE_WALLETCONNECT_PROJECT_ID=your-walletconnect-project-id
-   
-   # Network configuration (mainnet is default)
-   HEDERA_NETWORK=mainnet
-   VITE_HEDERA_NETWORK=mainnet
-   ```
-
-### Running the Application
-
-#### Option 1: Local Development (Recommended)
 ```bash
-make dev
-```
 
-#### Option 2: Secure Build (No Source Exposure)
-```bash
+# Secure preview (build frontend, serve static via backend)
 make dev-secure
-```
 
-#### Option 3: Docker
-```bash
-# Docker Compose
+# Docker compose dev
 make docker-compose-dev
 ```
 
-## Temporarily removed (can be restored on demand)
+Default ports:
+- Frontend (Vite): http://localhost:8080
+- Backend (FastAPI): http://localhost:8000
 
-* ~~docker-build-and-run.sh~~   – Linux / macOS  
-* ~~docker-build-and-run.ps1~~  – Windows PowerShell  
-* ~~docker-build-and-run.bat~~  – Windows Command Prompt
+## Frontend features
 
+- Major Gainz page (`services/frontend/src/majorgainz/MajorGainzPage.tsx`):
+  - Wallet target input (HashPack pairing optional), header badge with rank, quick actions, chat window
+  - Builds a ChartContext from live data: portfolio, DeFi positions, returns analytics, selected token
+- Chat-driven components:
+  - Agent replies can include tags like `[CHART:portfolio-chart]`
+  - `ChatWindow` parses tags and emits a `ComponentInstruction`
+  - `ChatComponentRegistry` lazy-loads and renders the matching component with context
+- Charts:
+  - `PortfolioChart` (Chart.js Doughnut via `react-chartjs-2`)
+  - `RiskScatter` (Chart.js Scatter)
+  - `DefiHeatmap` (DOM-based heatmap using APY/TVL, risk-coded)
+  - `CorrelationMatrix` (DOM grid using provided correlation coefficients)
+  - `TokenHolderAnalysis` (fetches `/api/token_holdings/{symbol}` for percentiles/top holders)
+  - `MGTokenHoldersInteractive` (interactive top/distribution/cumulative views)
+- Prompt suggestions: collapsed pill button labeled “Mission Context Assist” that expands to context-aware prompts
 
-The application will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend**: http://localhost:8000
+Security:
+- OpenAI key never shipped to browser. Chat uses backend proxy at `/api/v1/...`
+- Vite dev server proxies `/api` and `/mcp` to backend (configurable)
 
-## Core Features
+## Backend API (summary)
 
-### Portfolio Management
-- 🔗 **Wallet Connectivity**: Connect HashPack wallet
-- 📊 **Interactive Portfolio Dashboard**: Real-time token holdings with interactive charts and tables (Temporarily disabled until we move pricing to saucer)
-- 🌐 **Network Support**: Toggle between Hedera mainnet and testnet
+All endpoints are available both at their base path and under `/api` (duplicate router for the frontend), e.g., `/portfolio/...` and `/api/portfolio/...`.
 
-### Advanced Analytics
-- 📈 **Token Holder Analysis**: Detailed holder distribution analytics with percentile rankings
-- 📋 **DeFi Position Tracking**: View your positions across DeFi platforms (Bonzo, SaucerSwap)
-- 🔍 **Interactive JSON Explorer**: Temporary DeFi validation panel for debugging DeFi integrations
+Portfolio
+- `GET /portfolio/{address}?network=mainnet|testnet`
+  - Returns wallet holdings with USD valuations (prices from local OHLCV DB)
 
-### AI-Powered Insights
-- 🤖 **Intelligent Financial Assistant**: GPT-4o powered assistant with portfolio context
-- 🧠 **Smart Context Management**: Maintains conversation context with portfolio and holder data
-- 🔒 **Secure Backend Proxy**: All AI API calls routed through backend for security
+DeFi
+- `GET /defi/positions/{account_id}?network=mainnet|testnet` – condensed positions (TVL, counts, SaucerSwap/Bonzo data)
+- `GET /defi/profile/{account_id}?include_risk_analysis=true&testnet=false` – full cross-protocol profile
+- `GET /defi/profile/{account_id}/saucerswap?testnet=false` – SaucerSwap-only profile
+- `GET /defi/profile/{account_id}/bonzo` – Bonzo-only portfolio
+- `GET /defi/health` – protocol health
+- `GET /defi/pools/saucerswap?version=v1|v2|all&testnet=false` – pools listing
+- `GET /defi/pools/summary?account_id={optional}&testnet=false` – 10‑min cached global pools snapshot (optionally with user positions)
 
-### Security & Development
-- 🔐 **Centralized Environment Management**: Ready for Cloud Secrets Injection
-- 🛡️ **Source Code Protection**: Secure build process prevents frontend source exposure
-- 🐳 **Docker Integration**: Full containerization support with environment injection
+OHLCV (SaucerSwap; requires `SAUCER_SWAP_API_KEY`)
+- `GET /ohlcv/{token}?days=90&interval=DAY` – raw candles from SaucerSwap (normalized)
+- `GET /ohlcv/{token}/latest` – latest candle (from local DB)
+- `GET /ohlcv/{token}/stats?start=YYYY-MM-DD&end=YYYY-MM-DD` – summary statistics
+- `GET /ohlcv/{token}/mean_return?days=30`, `.../return_std?days=30`, `.../log_returns?days=30` – computed metrics
 
-## Recent Features & Updates
+Analytics
+- `GET /analytics/returns/{address}?network=mainnet|testnet&days=90` – per-token expected returns, volatility, Sharpe, and pairwise correlations used by the frontend charts
 
-### Latest Additions
-- **DeFi Integration Panel**: Interactive JSON explorer for DeFi position validation
-- **Resizable UI Components**: DeFi validation panel with drag-to-resize functionality
-- **Backend API Proxy**: Moved OpenAI API calls to backend for enhanced security
-- **Cascading Configuration**: Single top-level `.env`, with option to provide service specific .env if debugging or otherwise.
-- **Network Selection**: Easy switching between mainnet/testnet (defaults to mainnet)
+Token holders (static DB powered)
+- Read-only views (no body):
+  - `GET /holders/{symbol}/top?limit=10`
+  - `GET /holders/{symbol}/percentiles?list=99,95,90,75,50,25,10,5,1`
+  - `GET /holders/{symbol}/summary`
+- User-specific percentile + top holders (POST):
+  - `POST /token_holdings/{token}` with body `{ address: string, token_balance: string }`
 
-### Security Improvements
-- **Build Security**: Vite configured to prevent serving source code and sensitive files
+OpenAI proxy
+- `ANY /v1/{full_path}` – proxies to `https://api.openai.com/v1/{full_path}` with:
+  - Exponential backoff on 429 with jitter and `retry-after` support
+  - Limited retries on 5xx and timeouts
 
+MCP proxy
+- `ANY /mcp{path}` – reverse-proxy to the Agent Support RAG server (configurable host/port)
 
-### Development Experience
-- **Process Management**: Improved `make dev` with proper Ctrl+C handling for both services
-- **Docker Integration**: Environment variables properly injected into Docker containers
-- **Debug Tooling**: Added debug output for environment variable loading and API key validation
+Static frontend
+- If `services/frontend/dist` exists, backend serves it at `/` (API routes have precedence)
 
-## Known Issues
+## Agent Support (RAG + MCP)
 
-### Current Bugs
-- **SaucerSwap API Authentication**: 401 Unauthorized errors when using placeholder API keys
-  - **Solution**: Replace placeholder keys in `.env` with real SaucerSwap API credentials
-- **TypeScript Compilation**: Minor type compatibility issues (mostly resolved)
-- **Environment Sync**: Occasionally requires manual `make sync-env` after `.env` changes
+Located under `services/agent_support/agent_support/hedera_rag_server`.
 
-### Limitations
-- **Development Database**: Uses SQLite for local development (not production-ready)
-- **API Rate Limits**: No rate limiting implemented for external API calls
-- **Error Handling**: Some edge cases in DeFi data fetching need improvement
+- Exposes two trivial MCP tools (`hello`, `tell_me_a_secret`) and two health routes:
+  - `GET /health` – liveness
+  - `GET /ready` – readiness (reports whether LlamaIndex is available)
+- On startup (when run as `__main__`):
+  - Runs a background MCP server (default port 9091)
+  - Exposes `/mcp/*` on the main FastAPI app (default port 9090) with CORS
+- Backend `/mcp/*` forwards to this service
+- RAG index: loads or builds a LlamaIndex vector store from static FACTS + `knowledge_base/`; falls back to keyword match if LlamaIndex unavailable
 
-## Architecture
+Config (env; defaults):
+- `MCP_HOST=0.0.0.0`, `MCP_PORT=9090` (front door)
+- Background MCP server port: `9091`
+- `INDEX_DIR=index_store`, `EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2`, `SIMILARITY_TOP_K=3`
 
-### Backend Services
-- **FastAPI Server**: RESTful APIs for portfolio, DeFi, and chat functionality
-- **SQLite Database**: Local storage for token holdings and analytics
-- **External Integrations**: CoinGecko (pricing), SaucerSwap (DeFi), Hedera Mirror Node
-- **AI Proxy**: Secure backend proxy for OpenAI chat completions
+## Token Holdings system (static DB + CLI)
 
-### Frontend Application
-- **React + TypeScript**: Modern web application with Vite build system
-- **Chart.js Integration**: Interactive data visualizations
-- **Wallet Integration**: MetaMask and HashPack support via WalletConnect
-- **Responsive Design**: Mobile-friendly interface with resizable components
+Located under `services/backend/static/token_holdings`.
 
-### AI & Intelligence
-- **Langchain Integration**: Advanced AI agent with tool-calling capabilities
-- **Context Management**: Smart scratchpad system for maintaining conversation context
-- **Portfolio Awareness**: AI has access to real-time portfolio and holder data
+Purpose
+- Ingests Hedera holders for configured tokens and persists to `token_holdings.db`
+- Provides top holders and percentile markers used by backend routes
 
-### DevOps & Deployment
-- **Docker Containerization**: Full application stack containerization
-- **Environment Management**: Centralized configuration with service-specific injection
-- **Development Tooling**: Makefile automation for common development tasks
+Key commands (`python -m src.cli` via Poetry/Makefile), examples:
 
-## Development
+```bash
+# Initialize DB and validate tokens configuration/decimals
+poetry run python -m src.cli init
 
-### Project Structure
+# Refresh all tokens (or a single symbol) with optional filters
+poetry run python -m src.cli refresh --token HBAR --max-accounts 50000 --min-usd 10
+
+# Status table
+poetry run python -m src.cli status
+
+# Top holders and percentile markers
+poetry run python -m src.cli top --token HBAR --limit 10
+poetry run python -m src.cli percentiles --token HBAR --percentiles 99,95,90,75,50,25,10
+
+# Clean old batches (keep latest 5)
+poetry run python -m src.cli cleanup --keep 5
 ```
-quick-origins-poc/
-├── services/
-│   ├── backend/          # FastAPI backend service
-│   ├── frontend/         # React frontend application
-│   └── agent_support/    # AI agent support services
-├── .env                  # Centralized environment configuration
-├── Makefile             # Development automation
-└── docker-compose.yml   # Container orchestration
+
+Schema highlights (`src/database/models.py`):
+- `TokenMetadata` – per-token refresh tracking and pricing metadata
+- `TokenHolding` – holder entries and percentile markers (ranked, indexed)
+- `TokenPriceHistory`, `RefreshLog` – auditability and pricing snapshots
+
+Pricing and filters
+- `SaucerSwapPricingService` caches `/tokens` prices; special handling for HBAR via Mirror Node → CoinGecko → fallback
+- `TokenFilterService` adds USD values or filters by min-USD
+
+Validation (fails loudly)
+- `TokenValidator` checks `tokens_enabled.json`, fetches decimals from Mirror Node into `src/token_decimals.json`, ensures DB consistency, and verifies tokens exist on SaucerSwap when API key is set
+
+## Environment
+
+Backend
+- `OPENAI_API_KEY` – required for chat proxy
+- `SAUCER_SWAP_API_KEY` – required for OHLCV and enables USD features in token holdings
+- `HEDERA_NETWORK` – default `mainnet`
+- `MCP_HOST`, `MCP_PORT` – agent_support proxy target (defaults 127.0.0.1:9090)
+- `DATABASE_URL` – optional; defaults to local SQLite for OHLCV if unset
+
+Frontend (bundled at build time)
+- `VITE_WALLETCONNECT_PROJECT_ID` – optional
+- `VITE_HEDERA_NETWORK` – defaults to `mainnet`
+- Dev proxy target for backend can be overridden with `BACKEND_PORT` (defaults 8000)
+
+## End-to-end flow
+
+1) User sets target wallet; frontend hooks fetch:
+- `/api/portfolio/{address}` → holdings and USD
+- `/api/defi/positions/{address}` → condensed DeFi summary
+- `/api/analytics/returns/{address}` → returns/vol/Sharpe (+ correlations)
+- `/api/defi/pools/summary` → global pools for heatmap context
+
+2) User chats; frontend `useMGAgent` posts to `/api/v1/chat/completions`; response may include chart tags
+
+3) Chat renders components lazily via registry with live context
+
+4) Holders analysis uses either POST `/api/token_holdings/{symbol}` (user-specific) or read-only `/api/holders/*`
+
+## Notes & caveats
+
+- Without `SAUCER_SWAP_API_KEY`, OHLCV service and token price features will not function (and startup tasks that depend on them may fail)
+- Holders APIs require a populated `token_holdings.db` (use the CLI `init` + `refresh`)
+- CORS is permissive for dev; deploy behind appropriate gateways in production
+
+## Project layout
+
 ```
-
-### Environment Variables
-See [ENVIRONMENT_CENTRALIZED.md](ENVIRONMENT_CENTRALIZED.md) for detailed environment setup documentation.
-
-### Contributing
-1. Ensure all API keys are properly configured in `.env`
-2. Run `make dev` for local development
-3. Use `make sync-env` if environment sync issues occur
-4. Test both mainnet and testnet configurations before committing
-
----
-
-For detailed setup instructions and troubleshooting, see the [centralized environment documentation](ENVIRONMENT_CENTRALIZED.md).
+services/
+  backend/         FastAPI app (routers include: portfolio, defi, ohlcv, analytics, holders, token_holdings, chat, mcp_proxy)
+  frontend/        React app (Vite dev server proxies /api and /mcp to backend)
+  agent_support/   RAG MCP service (proxied via backend /mcp)
+```
