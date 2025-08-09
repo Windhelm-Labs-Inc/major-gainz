@@ -32,7 +32,7 @@ const CorrelationMatrix: React.FC<CorrelationMatrixProps> = ({
     );
   }
 
-  // Generate correlation matrix
+  // Generate correlation matrix (prefer provided values; do NOT synthesize)
   const generateCorrelationMatrix = () => {
     const symbols = returnsStats.map(stat => stat.symbol);
     const matrix: number[][] = [];
@@ -43,20 +43,14 @@ const CorrelationMatrix: React.FC<CorrelationMatrixProps> = ({
         if (i === j) {
           matrix[i][j] = 1; // Perfect self-correlation
         } else {
-          // Check if correlation exists in the data
+          // Use provided correlation only
           const stat = returnsStats[i];
           const existingCorrelation = stat.correlation?.[symbols[j]];
           
           if (existingCorrelation !== undefined) {
             matrix[i][j] = existingCorrelation;
           } else {
-            // Generate mock correlation (-1 to 1)
-            // Make matrix symmetric
-            if (matrix[j] && matrix[j][i] !== undefined) {
-              matrix[i][j] = matrix[j][i];
-            } else {
-              matrix[i][j] = Math.random() * 2 - 1;
-            }
+            matrix[i][j] = 0; // unknown → neutral
           }
         }
       }
@@ -114,7 +108,8 @@ const CorrelationMatrix: React.FC<CorrelationMatrixProps> = ({
         justifyContent: 'center',
         overflowX: 'auto',
         overflowY: 'auto',
-        height: `${height - 120}px`
+        height: `${height - 120}px`,
+        paddingRight: '8px'
       }}>
         <div style={{
           display: 'grid',
@@ -123,7 +118,8 @@ const CorrelationMatrix: React.FC<CorrelationMatrixProps> = ({
           background: 'var(--mg-gray-200)',
           padding: '1px',
           borderRadius: 'var(--mg-radius)',
-          fontSize: '0.75rem'
+          fontSize: '0.75rem',
+          boxSizing: 'content-box'
         }}>
           {/* Empty top-left cell */}
           <div style={{

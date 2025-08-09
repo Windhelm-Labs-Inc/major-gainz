@@ -40,6 +40,7 @@ const PromptSuggestions: React.FC<PromptSuggestionsProps> = ({
       const topHolding = portfolio.holdings[0];
       if (topHolding) {
         prompts.push(`Tell me about ${topHolding.symbol} token holder distribution`);
+        prompts.push(`Show ${topHolding.symbol} top holders and thresholds`);
       }
     }
     
